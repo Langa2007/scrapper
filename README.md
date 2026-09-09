@@ -1,0 +1,197 @@
+# AI Internet Scraper Bot (Go + Python)
+
+An intelligent, high-throughput web scraping and AI information extraction bot combining **Go** (for concurrent crawling, rate limiting, and API gateway) and **Python** (for web searching, HTML readability cleaning, and LLM synthesis).
+
+Designed to be consumed by external systems (such as **Dira News**), CLI scripts, or future JavaScript web frontends.
+
+---
+
+## Architecture Overview
+
+```
++-------------------------------------------------------------+
+|              Clients: Dira News / JS Frontend / CLI         |
++------------------------------+------------------------------+
+                               |  HTTP REST (Port 8080)
+                               v
++-------------------------------------------------------------+
+|                   Go Core & API Gateway                     |
+|  - Worker pool for high concurrency crawling                |
+|  - Connection pooling & polite rate limiting                |
+|  - Fast native HTML tokenization                            |
+|  - CORS-enabled REST API                                    |
++------------------------------+------------------------------+
+                               |  Internal HTTP (Port 5000)
+                               v
++-------------------------------------------------------------+
+|                  Python AI Microservice                     |
+|  - Internet searching (DuckDuckGo web & news)               |
+|  - HTML cleaning & boilerplate removal (Trafilatura & BS4)  |
+|  - AI synthesis (Google Gemini, OpenAI, or heuristics)      |
+|  - Structured news & content formatting                     |
++-------------------------------------------------------------+
+```
+
+---
+
+## Directory Structure
+
+```text
+scrapper/
+├── cmd/
+│   └── scraper-server/
+│       └── main.go                 # Go API Server entrypoint
+├── internal/
+│   ├── crawler/
+│   │   ├── crawler.go              # High-concurrency worker pool
+│   │   ├── extractor.go            # Native Go HTML cleaner
+│   │   └── models.go               # Request/Response schemas
+│   ├── service/
+│   │   └── ai_client.go            # Go client for Python microservice
+│   └── api/
+│       ├── router.go               # Routes & CORS middleware
+│       └── handlers.go             # Handlers for /health, /scrape, /news, /query
+├── python_ai/
+│   ├── app/
+│   │   ├── main.py                 # FastAPI microservice
+│   │   ├── searcher.py             # Web & News search provider
+│   │   ├── extractor.py            # Trafilatura + BS4 article extractor
+│   │   ├── ai_synthesizer.py       # LLM intelligence & news formatter
+│   │   └── config.py               # Settings loader
+│   ├── requirements.txt            # Python dependencies
+│   └── .venv/                      # Python virtual environment
+├── scripts/
+│   ├── start.ps1                   # One-click startup script
+│   └── test_api.ps1                # Integration test script
+├── .env.example                    # Environment template
+├── .env                            # Local configuration
+├── go.mod                          # Go module definition
+└── README.md
+```
+
+---
+
+## Quickstart Guide
+
+### 1. Requirements
+- **Python 3.10+** (Installed)
+- **Go 1.22+** (Installed via Winget or installer)
+
+### 2. Configure Environment (Optional)
+To enable generative AI reasoning with Google Gemini:
+Edit `.env`:
+```env
+GEMINI_API_KEY="your-gemini-api-key-here"
+```
+*(If no API key is provided, the scraper operates using its built-in heuristic extraction algorithms).*
+
+### 3. Run the Bot
+Run the startup script in PowerShell:
+```powershell
+.\scripts\start.ps1
+```
+
+Or start the two services manually in separate terminals:
+**Terminal 1 (Python AI Microservice):**
+```powershell
+cd python_ai
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 5000
+```
+
+**Terminal 2 (Go Gateway):**
+```powershell
+go run ./cmd/scraper-server
+```
+
+---
+
+## API Endpoints (Port 8080)
+
+### 1. News Extraction (For **Dira News** Integration)
+Fetch structured news articles on any topic, ready to be ingested into Dira News.
+
+- **URL:** `POST /api/v1/news`
+- **Payload:**
+```json
+{
+  "topic": "artificial intelligence breakthroughs",
+  "limit": 5,
+  "timeframe": "w"
+}
+```
+- **Response:**
+```json
+{
+  "topic": "artificial intelligence breakthroughs",
+  "count": 5,
+  "articles": [
+    {
+      "title": "Article Headline",
+      "url": "https://example.com/article",
+      "summary": "Summary or key takeaways from the article...",
+      "author": "Author Name",
+      "published_date": "2026-09-08",
+      "source": "TechCrunch",
+      "image": "https://example.com/image.jpg"
+    }
+  ]
+}
+```
+
+### 2. Intelligent Internet Query
+Ask any question. The bot searches the internet, crawls top pages, cleans boilerplate, and synthesizes an answer with citations.
+
+- **URL:** `POST /api/v1/query`
+- **Payload:**
+```json
+{
+  "query": "What are the latest developments in quantum computing?",
+  "max_results": 5
+}
+```
+- **Response:**
+```json
+{
+  "query": "What are the latest developments in quantum computing?",
+  "answer": "Synthesized AI response with citations [1], [2]...",
+  "sources": [
+    { "id": 1, "title": "Source 1", "url": "https://..." },
+    { "id": 2, "title": "Source 2", "url": "https://..." }
+  ],
+  "confidence": "high",
+  "duration_ms": 1420
+}
+```
+
+### 3. Direct Concurrent Web Scraping
+Directly scrape arbitrary URLs with Go's concurrent worker pool and Python's readability engine.
+
+- **URL:** `POST /api/v1/scrape`
+- **Payload:**
+```json
+{
+  "urls": [
+    "https://news.ycombinator.com",
+    "https://github.com/trending"
+  ],
+  "concurrency": 4
+}
+```
+
+### 4. Health Check
+- **URL:** `GET /api/v1/health`
+- Verifies both Go server and Python microservice connectivity.
+
+---
+
+## Connecting a JavaScript Frontend Later
+The Go gateway has **CORS enabled** (`Access-Control-Allow-Origin: *`). Any frontend built with React, Vue, Svelte, Next.js, or vanilla JS can fetch directly:
+```javascript
+const response = await fetch('http://localhost:8080/api/v1/query', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: 'Space exploration updates', max_results: 5 })
+});
+const data = await response.json();
+console.log(data.answer, data.sources);
+```
