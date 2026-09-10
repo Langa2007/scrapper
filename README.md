@@ -25,7 +25,7 @@ Designed to be consumed by external systems (such as **Dira News**), CLI scripts
                                v
 +-------------------------------------------------------------+
 |                  Python AI Microservice                     |
-|  - Internet searching (DuckDuckGo web & news)               |
+|  - Federated public-web search (DuckDuckGo, SearXNG, Brave) |
 |  - HTML cleaning & boilerplate removal (Trafilatura & BS4)  |
 |  - AI synthesis (Google Gemini, OpenAI, or heuristics)      |
 |  - Structured news & content formatting                     |
@@ -164,7 +164,7 @@ Ask any question. The bot searches the internet, crawls top pages, cleans boiler
 ```
 
 ### 3. Direct Concurrent Web Scraping
-Directly scrape arbitrary URLs with Go's concurrent worker pool and Python's readability engine.
+Directly scrape public HTTP(S) URLs with Go's concurrent worker pool and Python's readability engine. Requests are bounded, rate-limited per host, checked against `robots.txt`, and protected from private-network targets.
 
 - **URL:** `POST /api/v1/scrape`
 - **Payload:**
@@ -178,7 +178,33 @@ Directly scrape arbitrary URLs with Go's concurrent worker pool and Python's rea
 }
 ```
 
-### 4. Health Check
+### 4. Bounded Site Crawl
+Traverse public, robots-permitted pages on one site. The crawler never crosses to a different host unless `allow_subdomains` is enabled.
+
+- **URL:** `POST /api/v1/crawl`
+- **Payload:**
+```json
+{
+  "start_url": "https://example.com/docs",
+  "max_pages": 25,
+  "max_depth": 2,
+  "concurrency": 4,
+  "allow_subdomains": false
+}
+```
+
+### 5. Search Providers
+`/api/v1/query` accepts an optional `providers` array, for example `"providers": ["duckduckgo", "brave"]`. Configure the providers through `.env`:
+
+```env
+SEARCH_PROVIDERS=duckduckgo,searxng,brave
+SEARXNG_URL=https://search.example.com
+BRAVE_SEARCH_API_KEY=your-key
+```
+
+SearXNG lets an operator select supported upstream engines through their own instance. Brave uses its official API. The service only collects publicly reachable, permitted content; authentication barriers, paywalls, CAPTCHAs, `robots.txt`, and provider/site terms remain respected.
+
+### 6. Health Check
 - **URL:** `GET /api/v1/health`
 - Verifies both Go server and Python microservice connectivity.
 

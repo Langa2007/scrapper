@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -56,7 +57,17 @@ func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 		concurrency = 5
 	}
 
-	results := h.engine.ScrapeBatch(r.Context(), req.URLs, concurrency)
+	ctx := r.Context()
+	if req.TimeoutSec > 0 {
+		timeout := time.Duration(req.TimeoutSec) * time.Second
+		if timeout > 60*time.Second {
+			timeout = 60 * time.Second
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	results := h.engine.ScrapeBatch(ctx, req.URLs, concurrency)
 
 	// Enrich with Python AI cleaner if available
 	for i := range results {
@@ -79,6 +90,20 @@ func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 		"count":   len(results),
 		"results": results,
 	})
+}
+
+// CrawlSite traverses a bounded set of same-site public pages.
+func (h *Handler) CrawlSite(w http.ResponseWriter, r *http.Request) {
+	var req crawler.CrawlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+	if req.StartURL == "" {
+		writeError(w, http.StatusBadRequest, "start_url cannot be empty")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.engine.CrawlSite(r.Context(), req))
 }
 
 // QueryInternet handles POST /api/v1/query
@@ -104,8 +129,8 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		maxResults = 10
 	}
 
-	// 1. Search the web via Python AI microservice (DuckDuckGo)
-	searchResults, err := h.aiClient.SearchInternet(r.Context(), req.Query, maxResults, "web")
+	// 1. Search through the configured providers, then crawl public results.
+	searchResults, err := h.aiClient.SearchInternet(r.Context(), req.Query, maxResults, "web", req.Providers)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to search internet: "+err.Error())
 		return
@@ -118,6 +143,7 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 			Sources:    []map[string]any{},
 			Confidence: "none",
 			DurationMs: time.Since(start).Milliseconds(),
+			Providers:  req.Providers,
 		})
 		return
 	}
@@ -174,6 +200,7 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		Sources:    sources,
 		Confidence: confidence,
 		DurationMs: time.Since(start).Milliseconds(),
+		Providers:  req.Providers,
 	})
 }
 

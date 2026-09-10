@@ -14,5 +14,9 @@ class Settings(BaseModel):
         "SCRAPER_USER_AGENT",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
+    search_providers: str = os.getenv("SEARCH_PROVIDERS", "duckduckgo")
+    searxng_url: str = os.getenv("SEARXNG_URL", "")
+    brave_search_api_key: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    search_timeout_sec: float = float(os.getenv("SEARCH_TIMEOUT_SEC", "12"))
 
 settings = Settings()

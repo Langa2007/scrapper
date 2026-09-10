@@ -1,9 +1,12 @@
-"""
-Internet Search Provider
-Provides search capabilities across general web and news using DuckDuckGo.
-"""
+"""Search-provider adapters for public web and news discovery."""
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+import httpx
+
+from python_ai.app.config import settings
+
 try:
     from ddgs import DDGS
 except ImportError:
@@ -11,50 +14,140 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class SearchEngine:
-    def __init__(self):
-        pass
+    """Federates configured API/search adapters and returns normalized results."""
 
-    def search_web(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        """
-        Searches the open internet for general queries.
-        Returns a list of dicts with title, url, snippet.
-        """
+    def __init__(self) -> None:
+        self.default_providers = self._provider_names(settings.search_providers)
+
+    def search_web(
+        self, query: str, max_results: int = 5, providers: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        return self._search(query, max_results, "web", providers)
+
+    def search_news(
+        self,
+        query: str,
+        max_results: int = 10,
+        timelimit: Optional[str] = "w",
+        providers: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        return self._search(query, max_results, "news", providers, timelimit)
+
+    def _search(
+        self,
+        query: str,
+        max_results: int,
+        search_type: str,
+        providers: Optional[List[str]],
+        timelimit: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        provider_names = self._provider_names(",".join(providers or self.default_providers))
+        if not provider_names:
+            provider_names = ["duckduckgo"]
+
+        collected: List[Dict[str, Any]] = []
+        for name in provider_names:
+            try:
+                adapter = getattr(self, f"_search_{name}", None)
+                if adapter is None:
+                    logger.warning("Ignoring unsupported search provider: %s", name)
+                    continue
+                collected.extend(adapter(query, max_results, search_type, timelimit))
+            except Exception as exc:
+                logger.warning("Search provider %s failed: %s", name, exc)
+        return self._deduplicate(collected, max_results)
+
+    def _search_duckduckgo(
+        self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
+    ) -> List[Dict[str, Any]]:
         results = []
-        try:
-            with DDGS() as ddgs:
-                ddgs_results = ddgs.text(query, max_results=max_results)
-                for item in ddgs_results:
+        with DDGS() as ddgs:
+            if search_type == "news":
+                items = ddgs.news(query, max_results=max_results, timelimit=timelimit)
+                for item in items:
                     results.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("href", ""),
-                        "snippet": item.get("body", ""),
-                        "source": "web"
+                        "title": item.get("title", ""), "url": item.get("url", ""),
+                        "snippet": item.get("body", ""), "date": item.get("date", ""),
+                        "source": item.get("source", "news"), "image": item.get("image", ""),
+                        "provider": "duckduckgo",
                     })
-        except Exception as e:
-            logger.error(f"Error performing web search for '{query}': {e}")
+            else:
+                items = ddgs.text(query, max_results=max_results)
+                for item in items:
+                    results.append({
+                        "title": item.get("title", ""), "url": item.get("href", ""),
+                        "snippet": item.get("body", ""), "source": "web", "provider": "duckduckgo",
+                    })
         return results
 
-    def search_news(self, query: str, max_results: int = 10, timelimit: Optional[str] = "w") -> List[Dict[str, Any]]:
-        """
-        Searches news specifically (ideal for Dira News integration).
-        timelimit: 'd' (day), 'w' (week), 'm' (month)
-        """
+    def _search_searxng(
+        self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        if not settings.searxng_url:
+            raise RuntimeError("SEARXNG_URL is not configured")
+        endpoint = settings.searxng_url.rstrip("/") + "/search"
+        params = {"q": query, "format": "json", "categories": "news" if search_type == "news" else "general"}
+        if timelimit:
+            params["time_range"] = {"d": "day", "w": "week", "m": "month"}.get(timelimit, timelimit)
+        with httpx.Client(timeout=settings.search_timeout_sec, headers={"User-Agent": settings.user_agent}) as client:
+            response = client.get(endpoint, params=params)
+            response.raise_for_status()
+            payload = response.json()
         results = []
-        try:
-            with DDGS() as ddgs:
-                ddgs_news = ddgs.news(query, max_results=max_results, timelimit=timelimit)
-                for item in ddgs_news:
-                    results.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("url", ""),
-                        "snippet": item.get("body", ""),
-                        "date": item.get("date", ""),
-                        "source": item.get("source", "news"),
-                        "image": item.get("image", "")
-                    })
-        except Exception as e:
-            logger.error(f"Error performing news search for '{query}': {e}")
+        for item in payload.get("results", [])[:max_results]:
+            results.append({
+                "title": item.get("title", ""), "url": item.get("url", ""),
+                "snippet": item.get("content", ""), "date": item.get("publishedDate", ""),
+                "source": item.get("engine", "searxng"), "image": item.get("img_src", ""),
+                "provider": "searxng",
+            })
         return results
+
+    def _search_brave(
+        self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        if not settings.brave_search_api_key:
+            raise RuntimeError("BRAVE_SEARCH_API_KEY is not configured")
+        path = "news/search" if search_type == "news" else "web/search"
+        headers = {"Accept": "application/json", "X-Subscription-Token": settings.brave_search_api_key}
+        with httpx.Client(timeout=settings.search_timeout_sec, headers=headers) as client:
+            response = client.get(
+                f"https://api.search.brave.com/res/v1/{path}", params={"q": query, "count": min(max_results, 20)}
+            )
+            response.raise_for_status()
+            payload = response.json()
+        records = payload.get("results", []) if search_type == "news" else payload.get("web", {}).get("results", [])
+        return [{
+            "title": item.get("title", ""), "url": item.get("url", ""),
+            "snippet": item.get("description", ""), "date": item.get("page_age", item.get("age", "")),
+            "source": "brave", "image": "", "provider": "brave",
+        } for item in records[:max_results]]
+
+    @staticmethod
+    def _provider_names(value: str) -> List[str]:
+        return [name.strip().lower() for name in value.split(",") if name.strip()]
+
+    @staticmethod
+    def _deduplicate(items: Iterable[Dict[str, Any]], max_results: int) -> List[Dict[str, Any]]:
+        seen, results = set(), []
+        for item in items:
+            raw_url = item.get("url", "")
+            if not raw_url:
+                continue
+            parsed = urlsplit(raw_url)
+            clean_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(
+                [(k, v) for k, v in parse_qsl(parsed.query) if not k.lower().startswith("utm_")]
+            ), ""))
+            if clean_url in seen:
+                continue
+            seen.add(clean_url)
+            item["url"] = clean_url
+            results.append(item)
+            if len(results) >= max_results:
+                break
+        return results
+
 
 search_engine = SearchEngine()

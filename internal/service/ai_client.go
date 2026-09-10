@@ -50,12 +50,13 @@ func (c *AIClient) Health(ctx context.Context) (map[string]any, error) {
 	return result, nil
 }
 
-// SearchInternet queries DuckDuckGo via Python AI service.
-func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults int, searchType string) ([]map[string]any, error) {
+// SearchInternet queries configured search providers via the Python AI service.
+func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults int, searchType string, providers []string) ([]map[string]any, error) {
 	payload := map[string]any{
 		"query":       query,
 		"max_results": maxResults,
 		"type":        searchType,
+		"providers":   providers,
 	}
 	body, _ := json.Marshal(payload)
 

@@ -23,6 +23,7 @@ class SearchRequest(BaseModel):
     query: str
     max_results: int = 5
     type: str = "web"  # "web" or "news"
+    providers: Optional[List[str]] = None
 
 class CleanHtmlRequest(BaseModel):
     html: str
@@ -56,10 +57,10 @@ def health_check():
 @app.post("/api/ai/search")
 def search_internet(req: SearchRequest):
     if req.type == "news":
-        results = search_engine.search_news(req.query, max_results=req.max_results)
+        results = search_engine.search_news(req.query, max_results=req.max_results, providers=req.providers)
     else:
-        results = search_engine.search_web(req.query, max_results=req.max_results)
-    return {"query": req.query, "type": req.type, "count": len(results), "results": results}
+        results = search_engine.search_web(req.query, max_results=req.max_results, providers=req.providers)
+    return {"query": req.query, "type": req.type, "count": len(results), "results": results, "providers": req.providers or search_engine.default_providers}
 
 @app.post("/api/ai/clean-html")
 def clean_html(req: CleanHtmlRequest):

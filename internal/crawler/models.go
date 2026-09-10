@@ -10,11 +10,14 @@ type ScrapeJob struct {
 // ScrapeResult represents the scraped content and metadata from a web page.
 type ScrapeResult struct {
 	URL         string            `json:"url"`
+	FinalURL    string            `json:"final_url,omitempty"`
 	StatusCode  int               `json:"status_code"`
 	Title       string            `json:"title"`
 	HTML        string            `json:"html,omitempty"`
 	CleanText   string            `json:"clean_text"`
 	Description string            `json:"description,omitempty"`
+	ContentType string            `json:"content_type,omitempty"`
+	Links       []string          `json:"links,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	DurationMs  int64             `json:"duration_ms"`
 	Error       string            `json:"error,omitempty"`
@@ -27,10 +30,26 @@ type ScrapeBatchRequest struct {
 	TimeoutSec  int      `json:"timeout_sec,omitempty"`
 }
 
+// CrawlRequest starts a bounded, same-site crawl from a public URL.
+type CrawlRequest struct {
+	StartURL        string `json:"start_url"`
+	MaxPages        int    `json:"max_pages,omitempty"`
+	MaxDepth        int    `json:"max_depth,omitempty"`
+	Concurrency     int    `json:"concurrency,omitempty"`
+	AllowSubdomains bool   `json:"allow_subdomains,omitempty"`
+}
+
+type CrawlResponse struct {
+	StartURL string         `json:"start_url"`
+	Count    int            `json:"count"`
+	Results  []ScrapeResult `json:"results"`
+}
+
 // SearchAndQueryRequest represents an intelligent question-answering request.
 type SearchAndQueryRequest struct {
-	Query      string `json:"query"`
-	MaxResults int    `json:"max_results,omitempty"`
+	Query      string   `json:"query"`
+	MaxResults int      `json:"max_results,omitempty"`
+	Providers  []string `json:"providers,omitempty"`
 }
 
 // NewsRequest represents a news retrieval request (tailored for external services like Dira News).
@@ -65,4 +84,5 @@ type QueryResponse struct {
 	Sources    []map[string]any `json:"sources"`
 	Confidence string           `json:"confidence"`
 	DurationMs int64            `json:"duration_ms"`
+	Providers  []string         `json:"providers,omitempty"`
 }

@@ -11,6 +11,7 @@ func SetupRouter(h *Handler) http.Handler {
 	// API Endpoints
 	mux.HandleFunc("GET /api/v1/health", h.HealthCheck)
 	mux.HandleFunc("POST /api/v1/scrape", h.ScrapeURLs)
+	mux.HandleFunc("POST /api/v1/crawl", h.CrawlSite)
 	mux.HandleFunc("POST /api/v1/query", h.QueryInternet)
 	mux.HandleFunc("POST /api/v1/news", h.GetNews)
 
