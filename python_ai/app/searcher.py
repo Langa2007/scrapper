@@ -1,4 +1,3 @@
-"""Search-provider adapters for public web and news discovery."""
 import logging
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -16,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class SearchEngine:
-    """Federates configured API/search adapters and returns normalized results."""
-
     def __init__(self) -> None:
         self.default_providers = self._provider_names(settings.search_providers)
 

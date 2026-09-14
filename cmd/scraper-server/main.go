@@ -25,11 +25,7 @@ func main() {
 		pyBaseURL = "http://127.0.0.1:5000"
 	}
 
-	log.Printf("==================================================")
-	log.Printf("  AI Internet Scraper Core (Go + Python)")
-	log.Printf("  Go Gateway Port: %s", port)
-	log.Printf("  Python AI URL:   %s", pyBaseURL)
-	log.Printf("==================================================")
+	log.Printf("Starting scraper server on port %s (python service: %s)", port, pyBaseURL)
 
 	engine := crawler.NewEngine()
 	aiClient := service.NewAIClient(pyBaseURL)
@@ -44,7 +40,6 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Graceful shutdown channel
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 
@@ -56,7 +51,7 @@ func main() {
 	}()
 
 	<-stopChan
-	log.Println("Shutting down server gracefully...")
+	log.Println("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -65,5 +60,5 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Server exited cleanly.")
+	log.Println("Server stopped.")
 }

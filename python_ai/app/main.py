@@ -1,10 +1,7 @@
-"""
-FastAPI Microservice for AI Internet Scraper Core
-Exposes internal REST endpoints used by the Go orchestrator.
-"""
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
@@ -12,17 +9,25 @@ from python_ai.app.config import settings
 from python_ai.app.searcher import search_engine
 from python_ai.app.extractor import content_extractor
 from python_ai.app.ai_synthesizer import ai_synthesizer
+from python_ai.app import chatbot as chatbot_module
+from python_ai.app import crypto as crypto_module
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Scraper AI Microservice", version="0.1.0")
+app = FastAPI(title="AI Internet Scraper Microservice", version="0.2.0")
 
-# --- Request/Response Models ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class SearchRequest(BaseModel):
     query: str
     max_results: int = 5
-    type: str = "web"  # "web" or "news"
+    type: str = "web"
     providers: Optional[List[str]] = None
 
 class CleanHtmlRequest(BaseModel):
@@ -44,14 +49,30 @@ class NewsRequest(BaseModel):
     limit: int = 10
     timeframe: Optional[str] = "w"
 
-# --- Endpoints ---
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"
+    mode: str = "general"
+    site_context: Optional[str] = ""
+
+class ClearSessionRequest(BaseModel):
+    session_id: str
+
+class CryptoRequest(BaseModel):
+    coin: str
+
+class CryptoMarketRequest(BaseModel):
+    coins: Optional[List[str]] = None
+    limit: int = 10
+
 @app.get("/health")
 def health_check():
     return {
         "status": "healthy",
         "service": "python_ai",
+        "version": "0.2.0",
         "gemini_configured": bool(settings.gemini_api_key),
-        "openai_configured": bool(settings.openai_api_key)
+        "openai_configured": bool(settings.openai_api_key),
     }
 
 @app.post("/api/ai/search")
@@ -60,28 +81,64 @@ def search_internet(req: SearchRequest):
         results = search_engine.search_news(req.query, max_results=req.max_results, providers=req.providers)
     else:
         results = search_engine.search_web(req.query, max_results=req.max_results, providers=req.providers)
-    return {"query": req.query, "type": req.type, "count": len(results), "results": results, "providers": req.providers or search_engine.default_providers}
+    return {
+        "query": req.query,
+        "type": req.type,
+        "count": len(results),
+        "results": results,
+        "providers": req.providers or search_engine.default_providers,
+    }
 
 @app.post("/api/ai/clean-html")
 def clean_html(req: CleanHtmlRequest):
-    extracted = content_extractor.extract_from_html(req.html, url=req.url)
-    return extracted
+    return content_extractor.extract_from_html(req.html, url=req.url)
 
 @app.post("/api/ai/synthesize")
 def synthesize_answer(req: SynthesizeRequest):
     doc_dicts = [doc.model_dump() for doc in req.documents]
-    result = ai_synthesizer.synthesize_answer(req.query, doc_dicts)
-    return result
+    return ai_synthesizer.synthesize_answer(req.query, doc_dicts)
 
 @app.post("/api/ai/news")
 def get_news(req: NewsRequest):
     raw_news = search_engine.search_news(req.topic, max_results=req.limit, timelimit=req.timeframe)
     formatted = ai_synthesizer.format_news_feed(raw_news)
-    return {
-        "topic": req.topic,
-        "count": len(formatted),
-        "articles": formatted
-    }
+    return {"topic": req.topic, "count": len(formatted), "articles": formatted}
+
+@app.post("/api/ai/chat")
+def chat(req: ChatRequest):
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="message cannot be empty")
+    return chatbot_module.chat(
+        message=req.message,
+        session_id=req.session_id,
+        mode=req.mode,
+        site_context=req.site_context or "",
+    )
+
+@app.get("/api/ai/chat/history/{session_id}")
+def chat_history(session_id: str):
+    return {"session_id": session_id, "history": chatbot_module.get_history(session_id)}
+
+@app.post("/api/ai/chat/clear")
+def clear_chat(req: ClearSessionRequest):
+    cleared = chatbot_module.clear_session(req.session_id)
+    return {"cleared": cleared, "session_id": req.session_id}
+
+@app.post("/api/ai/crypto")
+def get_crypto(req: CryptoRequest):
+    data = crypto_module.get_coin(req.coin)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Coin '{req.coin}' not found on CoinGecko")
+    return data
+
+@app.get("/api/ai/crypto/trending")
+def get_trending_crypto():
+    return {"trending": crypto_module.get_trending()}
+
+@app.post("/api/ai/crypto/market")
+def get_market(req: CryptoMarketRequest):
+    data = crypto_module.get_market_overview(coins=req.coins, limit=req.limit)
+    return {"count": len(data), "coins": data}
 
 if __name__ == "__main__":
     uvicorn.run("python_ai.app.main:app", host=settings.host, port=settings.port, reload=True)

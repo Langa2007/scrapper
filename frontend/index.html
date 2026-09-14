@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Scraper Bot — Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>🤖 <span>Scraper</span>Bot</h2>
+      <small>AI-powered internet intelligence</small>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-panel="query">
+        <span class="icon">🔍</span><span class="label">Research Query</span>
+      </div>
+      <div class="nav-item" data-panel="news">
+        <span class="icon">📰</span><span class="label">News Feed</span>
+      </div>
+      <div class="nav-item" data-panel="scrape">
+        <span class="icon">🌐</span><span class="label">Web Scraper</span>
+      </div>
+      <div class="nav-item" data-panel="chat">
+        <span class="icon">💬</span><span class="label">AI Chatbot</span>
+      </div>
+      <div class="nav-item" data-panel="crypto">
+        <span class="icon">₿</span><span class="label">Crypto Signals</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking…</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim)">API: localhost:8080</div>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────── -->
+  <div class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" id="topbar-title">Research Query</span>
+      <span class="topbar-api">GET /api/v1/health</span>
+    </div>
+
+    <!-- ── PANEL: Query ─────────────────────────────────────────────── -->
+    <section class="panel active" id="panel-query">
+      <div class="panel-title">Research Query</div>
+      <div class="panel-subtitle">
+        Ask anything — the bot searches the internet, crawls top results concurrently, and synthesizes an answer with source citations.
+      </div>
+
+      <form id="query-form">
+        <div class="input-group">
+          <input class="main-input" id="query-input" type="text"
+                 placeholder="e.g. What are the latest open source AI models?" autocomplete="off">
+          <button class="btn btn-primary" type="submit">Search &amp; Synthesize</button>
+        </div>
+      </form>
+
+      <!-- Quick examples -->
+      <div style="margin-bottom:18px;font-size:13px;color:var(--text-muted)">
+        Try:
+        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">quantum computing breakthroughs 2026</span>
+        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">best Python frameworks for web scraping</span>
+        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">latest AI news today</span>
+      </div>
+
+      <div id="query-results">
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <p>Enter a question above to search the internet and get an AI-synthesized answer.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PANEL: News ──────────────────────────────────────────────── -->
+    <section class="panel" id="panel-news">
+      <div class="panel-title">News Feed</div>
+      <div class="panel-subtitle">
+        Real-time news articles by topic. Ready for integration into Dira News or any other platform via <code>/api/v1/news</code>.
+      </div>
+
+      <form id="news-form">
+        <div class="input-group">
+          <input class="main-input" id="news-input" type="text"
+                 placeholder="e.g. artificial intelligence, Kenya politics, crypto markets…" autocomplete="off">
+          <select  id="news-timeframe">
+            <option value="d">Last 24h</option>
+            <option value="w" selected>Last Week</option>
+            <option value="m">Last Month</option>
+          </select>
+          <select id="news-limit">
+            <option value="6">6 articles</option>
+            <option value="9" selected>9 articles</option>
+            <option value="15">15 articles</option>
+          </select>
+          <button class="btn btn-primary" type="submit">Fetch News</button>
+        </div>
+      </form>
+
+      <!-- Quick topics -->
+      <div style="margin-bottom:18px;font-size:13px;color:var(--text-muted)">
+        Quick:
+        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">technology</span>
+        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">cryptocurrency</span>
+        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">Africa business</span>
+        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">climate change</span>
+      </div>
+
+      <div id="news-results">
+        <div class="empty-state">
+          <div class="icon">📰</div>
+          <p>Enter a topic to fetch live news articles.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PANEL: Scraper ───────────────────────────────────────────── -->
+    <section class="panel" id="panel-scrape">
+      <div class="panel-title">Web Scraper</div>
+      <div class="panel-subtitle">
+        Paste URLs below. Go's concurrent engine fetches all pages simultaneously and Python AI extracts clean readable text, stripping ads and scripts.
+      </div>
+
+      <div class="url-tag-input" id="url-tags">
+        <input id="url-input-field" type="text" placeholder="Paste a URL and press Enter…">
+      </div>
+      <div class="input-group">
+        <button class="btn btn-primary" id="scrape-btn">Scrape Pages</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('url-tags').innerHTML='<input id=&quot;url-input-field&quot; type=&quot;text&quot; placeholder=&quot;Paste a URL and press Enter…&quot;>';initScraper();$('#scrape-results').innerHTML=''">Clear</button>
+      </div>
+
+      <div id="scrape-results">
+        <div class="empty-state">
+          <div class="icon">🌐</div>
+          <p>Add URLs above and click "Scrape Pages" to extract clean content.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PANEL: Chat ──────────────────────────────────────────────── -->
+    <section class="panel" id="panel-chat" style="padding:0;max-width:100%">
+      <div class="chat-layout">
+        <div class="chat-toolbar">
+          <label>Mode:</label>
+          <select id="chat-mode">
+            <option value="general">🔍 General Assistant</option>
+            <option value="nav">🗺️ Navigation Helper</option>
+            <option value="crypto">₿ Crypto Advisor</option>
+          </select>
+
+          <label style="margin-left:14px">Site context <span style="font-size:11px;color:var(--text-dim)">(for nav mode)</span>:</label>
+          <input type="text" id="chat-site-context" style="width:260px"
+                 placeholder="e.g. Dira News: Home, Tech, Sport, Business, Weather. Search bar at top.">
+
+          <button class="btn btn-secondary" id="chat-clear" style="margin-left:auto">🗑️ Clear</button>
+        </div>
+
+        <div class="chat-messages" id="chat-messages"></div>
+
+        <div class="chat-input-bar">
+          <input id="chat-input" type="text" placeholder="Ask me anything…" autocomplete="off">
+          <button class="btn btn-primary" id="chat-send">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PANEL: Crypto ────────────────────────────────────────────── -->
+    <section class="panel" id="panel-crypto">
+      <div class="panel-title">Crypto Signals</div>
+      <div class="panel-subtitle">
+        Live prices, market data, and momentum signals (BUY/HOLD/SELL) for any coin. Powered by CoinGecko's free API.
+      </div>
+
+      <form id="crypto-form">
+        <div class="input-group">
+          <input class="main-input" id="crypto-input" type="text"
+                 placeholder="Enter coin name or symbol: bitcoin, ETH, solana, DOGE…" autocomplete="off">
+          <button class="btn btn-primary" type="submit">Get Signal</button>
+        </div>
+      </form>
+
+      <!-- Quick coins -->
+      <div class="input-group" style="flex-wrap:wrap;margin-bottom:18px">
+        <button class="btn btn-secondary quick-coin" data-coin="bitcoin">₿ Bitcoin</button>
+        <button class="btn btn-secondary quick-coin" data-coin="ethereum">⟠ Ethereum</button>
+        <button class="btn btn-secondary quick-coin" data-coin="solana">◎ Solana</button>
+        <button class="btn btn-secondary quick-coin" data-coin="bnb">BNB</button>
+        <button class="btn btn-secondary quick-coin" data-coin="xrp">XRP</button>
+        <button class="btn btn-secondary quick-coin" data-coin="dogecoin">🐕 DOGE</button>
+        <button class="btn btn-secondary quick-coin" data-coin="cardano">ADA</button>
+        <button class="btn btn-secondary quick-coin" data-coin="shib">SHIB</button>
+      </div>
+
+      <div id="crypto-results">
+        <div class="empty-state">
+          <div class="icon">₿</div>
+          <p>Enter a coin name or symbol to see live price data and trading signal.</p>
+        </div>
+      </div>
+
+      <!-- Trending -->
+      <div style="margin-top:28px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:10px">🔥 Trending Now (CoinGecko)</div>
+        <div class="trending-list" id="trending-list">
+          <div class="loader"><div class="spinner"></div>Loading…</div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- main-content -->
+</div><!-- app-layout -->
+
+<div id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

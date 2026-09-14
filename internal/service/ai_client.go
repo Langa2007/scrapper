@@ -12,13 +12,11 @@ import (
 	"scrapper/internal/crawler"
 )
 
-// AIClient communicates with the Python AI microservice.
 type AIClient struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// NewAIClient creates a client pointing to the Python AI service (default http://127.0.0.1:5000).
 func NewAIClient(baseURL string) *AIClient {
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:5000"
@@ -31,7 +29,6 @@ func NewAIClient(baseURL string) *AIClient {
 	}
 }
 
-// Health checks if Python AI service is reachable and healthy.
 func (c *AIClient) Health(ctx context.Context) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", nil)
 	if err != nil {
@@ -50,7 +47,6 @@ func (c *AIClient) Health(ctx context.Context) (map[string]any, error) {
 	return result, nil
 }
 
-// SearchInternet queries configured search providers via the Python AI service.
 func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults int, searchType string, providers []string) ([]map[string]any, error) {
 	payload := map[string]any{
 		"query":       query,
@@ -81,7 +77,6 @@ func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults 
 	return res.Results, nil
 }
 
-// CleanHTML uses Python's Trafilatura and BeautifulSoup to clean raw HTML into structured text.
 func (c *AIClient) CleanHTML(ctx context.Context, rawHTML string, pageURL string) (map[string]any, error) {
 	payload := map[string]any{
 		"html": rawHTML,
@@ -108,7 +103,6 @@ func (c *AIClient) CleanHTML(ctx context.Context, rawHTML string, pageURL string
 	return res, nil
 }
 
-// SynthesizeAnswer passes scraped documents to Python AI for synthesis.
 func (c *AIClient) SynthesizeAnswer(ctx context.Context, query string, docs []crawler.ScrapeResult) (map[string]any, error) {
 	var docItems []map[string]any
 	for _, d := range docs {
@@ -145,7 +139,6 @@ func (c *AIClient) SynthesizeAnswer(ctx context.Context, query string, docs []cr
 	return res, nil
 }
 
-// FetchNews asks Python AI to get and format news articles.
 func (c *AIClient) FetchNews(ctx context.Context, topic string, limit int, timeframe string) (*crawler.NewsResponse, error) {
 	payload := map[string]any{
 		"topic":     topic,
@@ -176,4 +169,114 @@ func (c *AIClient) FetchNews(ctx context.Context, topic string, limit int, timef
 		return nil, err
 	}
 	return &res, nil
+}
+
+func (c *AIClient) Chat(ctx context.Context, req crawler.ChatRequest) (*crawler.ChatResponse, error) {
+	if req.SessionID == "" {
+		req.SessionID = "default"
+	}
+	if req.Mode == "" {
+		req.Mode = "general"
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"message":      req.Message,
+		"session_id":   req.SessionID,
+		"mode":         req.Mode,
+		"site_context": req.SiteContext,
+	})
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/ai/chat", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("chat error (%d): %s", resp.StatusCode, string(b))
+	}
+
+	var res crawler.ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *AIClient) GetCrypto(ctx context.Context, coin string) (map[string]any, error) {
+	body, _ := json.Marshal(map[string]any{"coin": coin})
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/ai/crypto", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("coin '%s' not found", coin)
+	}
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("crypto error (%d): %s", resp.StatusCode, string(b))
+	}
+
+	var res map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (c *AIClient) GetTrendingCrypto(ctx context.Context) (map[string]any, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/ai/crypto/trending", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var res map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (c *AIClient) GetCryptoMarket(ctx context.Context, coins []string, limit int) (map[string]any, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	body, _ := json.Marshal(map[string]any{"coins": coins, "limit": limit})
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/ai/crypto/market", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var res map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }

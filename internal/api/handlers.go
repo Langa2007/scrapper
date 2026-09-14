@@ -22,7 +22,6 @@ func NewHandler(engine *crawler.Engine, aiClient *service.AIClient) *Handler {
 	}
 }
 
-// HealthCheck handles GET /api/v1/health
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	pyHealth, err := h.aiClient.Health(r.Context())
 	pyStatus := "connected"
@@ -39,7 +38,6 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ScrapeURLs handles POST /api/v1/scrape
 func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 	var req crawler.ScrapeBatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -69,7 +67,6 @@ func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	results := h.engine.ScrapeBatch(ctx, req.URLs, concurrency)
 
-	// Enrich with Python AI cleaner if available
 	for i := range results {
 		if results[i].Error == "" && results[i].HTML != "" {
 			cleanData, err := h.aiClient.CleanHTML(r.Context(), results[i].HTML, results[i].URL)
@@ -81,7 +78,6 @@ func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 					results[i].Title = title
 				}
 			}
-			// Do not leak heavy raw HTML in response unless requested
 			results[i].HTML = ""
 		}
 	}
@@ -92,7 +88,6 @@ func (h *Handler) ScrapeURLs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CrawlSite traverses a bounded set of same-site public pages.
 func (h *Handler) CrawlSite(w http.ResponseWriter, r *http.Request) {
 	var req crawler.CrawlRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -106,8 +101,6 @@ func (h *Handler) CrawlSite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.engine.CrawlSite(r.Context(), req))
 }
 
-// QueryInternet handles POST /api/v1/query
-// Searches the open web, crawls top results concurrently in Go, and synthesizes answers with Python AI.
 func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	var req crawler.SearchAndQueryRequest
@@ -129,7 +122,6 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		maxResults = 10
 	}
 
-	// 1. Search through the configured providers, then crawl public results.
 	searchResults, err := h.aiClient.SearchInternet(r.Context(), req.Query, maxResults, "web", req.Providers)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to search internet: "+err.Error())
@@ -148,7 +140,6 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Extract URLs to scrape
 	var urls []string
 	for _, sr := range searchResults {
 		if u, ok := sr["url"].(string); ok && u != "" {
@@ -156,16 +147,13 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 3. Scrape pages concurrently using Go's high-speed engine
 	scraped := h.engine.ScrapeBatch(r.Context(), urls, 5)
 
-	// Clean and combine documents
 	var validDocs []crawler.ScrapeResult
 	for i, doc := range scraped {
 		if doc.Error == "" && doc.CleanText != "" {
 			validDocs = append(validDocs, doc)
 		} else if i < len(searchResults) {
-			// Fallback to search snippet if scrape failed or was blocked
 			snippet, _ := searchResults[i]["snippet"].(string)
 			title, _ := searchResults[i]["title"].(string)
 			validDocs = append(validDocs, crawler.ScrapeResult{
@@ -176,7 +164,6 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Synthesize with AI
 	aiResp, err := h.aiClient.SynthesizeAnswer(r.Context(), req.Query, validDocs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ai synthesis failed: "+err.Error())
@@ -204,8 +191,6 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetNews handles POST /api/v1/news
-// Dedicated news endpoint for systems like Dira News.
 func (h *Handler) GetNews(w http.ResponseWriter, r *http.Request) {
 	var req crawler.NewsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -238,6 +223,81 @@ func (h *Handler) GetNews(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, newsRes)
+}
+
+func (h *Handler) ChatBot(w http.ResponseWriter, r *http.Request) {
+	var req crawler.ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+	if req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message cannot be empty")
+		return
+	}
+	if req.SessionID == "" {
+		req.SessionID = "default"
+	}
+	if req.Mode == "" {
+		req.Mode = "general"
+	}
+
+	resp, err := h.aiClient.Chat(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "chatbot error: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) GetCrypto(w http.ResponseWriter, r *http.Request) {
+	var req crawler.CryptoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+	if req.Coin == "" {
+		writeError(w, http.StatusBadRequest, "coin cannot be empty")
+		return
+	}
+
+	data, err := h.aiClient.GetCrypto(r.Context(), req.Coin)
+	if err != nil {
+		if data == nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) GetTrendingCrypto(w http.ResponseWriter, r *http.Request) {
+	data, err := h.aiClient.GetTrendingCrypto(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "trending crypto error: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) GetCryptoMarket(w http.ResponseWriter, r *http.Request) {
+	var req crawler.CryptoMarketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	data, err := h.aiClient.GetCryptoMarket(r.Context(), req.Coins, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "market error: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

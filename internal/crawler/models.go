@@ -1,13 +1,11 @@
 package crawler
 
-// ScrapeJob defines the target and parameters for scraping a single URL.
 type ScrapeJob struct {
 	URL        string            `json:"url"`
 	TimeoutSec int               `json:"timeout_sec,omitempty"`
 	Headers    map[string]string `json:"headers,omitempty"`
 }
 
-// ScrapeResult represents the scraped content and metadata from a web page.
 type ScrapeResult struct {
 	URL         string            `json:"url"`
 	FinalURL    string            `json:"final_url,omitempty"`
@@ -23,14 +21,12 @@ type ScrapeResult struct {
 	Error       string            `json:"error,omitempty"`
 }
 
-// ScrapeBatchRequest defines a batch of URLs to scrape concurrently.
 type ScrapeBatchRequest struct {
 	URLs        []string `json:"urls"`
 	Concurrency int      `json:"concurrency,omitempty"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty"`
 }
 
-// CrawlRequest starts a bounded, same-site crawl from a public URL.
 type CrawlRequest struct {
 	StartURL        string `json:"start_url"`
 	MaxPages        int    `json:"max_pages,omitempty"`
@@ -45,21 +41,18 @@ type CrawlResponse struct {
 	Results  []ScrapeResult `json:"results"`
 }
 
-// SearchAndQueryRequest represents an intelligent question-answering request.
 type SearchAndQueryRequest struct {
 	Query      string   `json:"query"`
 	MaxResults int      `json:"max_results,omitempty"`
 	Providers  []string `json:"providers,omitempty"`
 }
 
-// NewsRequest represents a news retrieval request (tailored for external services like Dira News).
 type NewsRequest struct {
 	Topic     string `json:"topic"`
 	Limit     int    `json:"limit,omitempty"`
-	Timeframe string `json:"timeframe,omitempty"` // "d" for day, "w" for week, "m" for month
+	Timeframe string `json:"timeframe,omitempty"`
 }
 
-// NewsArticle represents a structured news article.
 type NewsArticle struct {
 	Title         string `json:"title"`
 	URL           string `json:"url"`
@@ -70,14 +63,12 @@ type NewsArticle struct {
 	Image         string `json:"image,omitempty"`
 }
 
-// NewsResponse represents the structured response for news queries.
 type NewsResponse struct {
 	Topic    string        `json:"topic"`
 	Count    int           `json:"count"`
 	Articles []NewsArticle `json:"articles"`
 }
 
-// QueryResponse represents the AI synthesized answer for a general query.
 type QueryResponse struct {
 	Query      string           `json:"query"`
 	Answer     string           `json:"answer"`
@@ -85,4 +76,28 @@ type QueryResponse struct {
 	Confidence string           `json:"confidence"`
 	DurationMs int64            `json:"duration_ms"`
 	Providers  []string         `json:"providers,omitempty"`
+}
+
+type ChatRequest struct {
+	Message     string `json:"message"`
+	SessionID   string `json:"session_id,omitempty"`
+	Mode        string `json:"mode,omitempty"`
+	SiteContext string `json:"site_context,omitempty"`
+}
+
+type ChatResponse struct {
+	Reply         string           `json:"reply"`
+	SessionID     string           `json:"session_id"`
+	Mode          string           `json:"mode"`
+	Sources       []map[string]any `json:"sources"`
+	HistoryLength int              `json:"history_length"`
+}
+
+type CryptoRequest struct {
+	Coin string `json:"coin"`
+}
+
+type CryptoMarketRequest struct {
+	Coins []string `json:"coins,omitempty"`
+	Limit int      `json:"limit,omitempty"`
 }

@@ -18,5 +18,9 @@ class Settings(BaseModel):
     searxng_url: str = os.getenv("SEARXNG_URL", "")
     brave_search_api_key: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
     search_timeout_sec: float = float(os.getenv("SEARCH_TIMEOUT_SEC", "12"))
+    coingecko_api_key: str = os.getenv("COINGECKO_API_KEY", "")
+    coingecko_timeout_sec: float = float(os.getenv("COINGECKO_TIMEOUT_SEC", "10"))
+    chat_history_max_turns: int = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "20"))
+    chat_session_ttl_min: int = int(os.getenv("CHAT_SESSION_TTL_MIN", "60"))
 
 settings = Settings()

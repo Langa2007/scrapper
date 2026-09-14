@@ -17,19 +17,15 @@ var (
 	spacesRegex = regexp.MustCompile(`\s+`)
 )
 
-// ExtractBasicHTML extracts title, description, and clean text using regex without heavy dependencies.
 func ExtractBasicHTML(rawHTML string) (title string, desc string, cleanText string) {
-	// Extract Title
 	if match := titleRegex.FindStringSubmatch(rawHTML); len(match) > 1 {
 		title = strings.TrimSpace(match[1])
 	}
 
-	// Extract Description
 	if match := metaDesc.FindStringSubmatch(rawHTML); len(match) > 1 {
 		desc = strings.TrimSpace(match[1])
 	}
 
-	// Clean body text
 	noScript := scriptRegex.ReplaceAllString(rawHTML, " ")
 	noStyle := styleRegex.ReplaceAllString(noScript, " ")
 	noTags := tagRegex.ReplaceAllString(noStyle, " ")
@@ -39,7 +35,6 @@ func ExtractBasicHTML(rawHTML string) (title string, desc string, cleanText stri
 	return title, desc, cleanText
 }
 
-// ExtractLinks returns unique absolute HTTP(S) links found in a page.
 func ExtractLinks(rawHTML, baseURL string, maxLinks int) []string {
 	base, err := url.Parse(baseURL)
 	if err != nil {

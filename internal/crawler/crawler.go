@@ -19,7 +19,6 @@ const (
 	politeDelay      = 300 * time.Millisecond
 )
 
-// Engine manages policy-aware concurrent scraping operations.
 type Engine struct {
 	client      *http.Client
 	robots      *robotsCache
@@ -74,7 +73,6 @@ func (e *Engine) waitForHost(ctx context.Context, host string) error {
 	return nil
 }
 
-// ScrapeSingle fetches a public HTML page after robots.txt and network-safety checks.
 func (e *Engine) ScrapeSingle(ctx context.Context, job ScrapeJob) ScrapeResult {
 	start := time.Now()
 	res := ScrapeResult{URL: job.URL}
@@ -171,7 +169,6 @@ func (e *Engine) ScrapeBatch(ctx context.Context, urls []string, concurrency int
 	return results
 }
 
-// CrawlSite follows public, robots-permitted links within the starting site.
 func (e *Engine) CrawlSite(ctx context.Context, req CrawlRequest) CrawlResponse {
 	maxPages, maxDepth, concurrency := req.MaxPages, req.MaxDepth, req.Concurrency
 	if maxPages <= 0 {
