@@ -36,11 +36,11 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
+      <div class="sidebar-status">
         <span class="status-dot" id="status-dot"></span>
         <span id="status-text">Checking…</span>
       </div>
-      <div style="font-size:11px;color:var(--text-dim)">API: localhost:8080</div>
+      <div class="sidebar-api">API: localhost:8080</div>
     </div>
   </aside>
 
@@ -67,11 +67,11 @@
       </form>
 
       <!-- Quick examples -->
-      <div style="margin-bottom:18px;font-size:13px;color:var(--text-muted)">
+      <div class="quick-examples">
         Try:
-        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">quantum computing breakthroughs 2026</span>
-        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">best Python frameworks for web scraping</span>
-        <span class="source-chip" style="cursor:pointer" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">latest AI news today</span>
+        <span class="source-chip clickable" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">quantum computing breakthroughs 2026</span>
+        <span class="source-chip clickable" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">best Python frameworks for web scraping</span>
+        <span class="source-chip clickable" onclick="$('#query-input').value=this.textContent;$('#query-form').dispatchEvent(new Event('submit'))">latest AI news today</span>
       </div>
 
       <div id="query-results">
@@ -82,7 +82,6 @@
       </div>
     </section>
 
-    <!-- ── PANEL: News ──────────────────────────────────────────────── -->
     <section class="panel" id="panel-news">
       <div class="panel-title">News Feed</div>
       <div class="panel-subtitle">
@@ -93,12 +92,14 @@
         <div class="input-group">
           <input class="main-input" id="news-input" type="text"
                  placeholder="e.g. artificial intelligence, Kenya politics, crypto markets…" autocomplete="off">
-          <select  id="news-timeframe">
+          <label class="sr-only" for="news-timeframe">Timeframe</label>
+          <select id="news-timeframe" title="Timeframe" aria-label="Timeframe">
             <option value="d">Last 24h</option>
             <option value="w" selected>Last Week</option>
             <option value="m">Last Month</option>
           </select>
-          <select id="news-limit">
+          <label class="sr-only" for="news-limit">Number of articles</label>
+          <select id="news-limit" title="Number of articles" aria-label="Number of articles">
             <option value="6">6 articles</option>
             <option value="9" selected>9 articles</option>
             <option value="15">15 articles</option>
@@ -107,13 +108,12 @@
         </div>
       </form>
 
-      <!-- Quick topics -->
-      <div style="margin-bottom:18px;font-size:13px;color:var(--text-muted)">
+      <div class="quick-examples">
         Quick:
-        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">technology</span>
-        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">cryptocurrency</span>
-        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">Africa business</span>
-        <span class="source-chip" style="cursor:pointer" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">climate change</span>
+        <span class="source-chip clickable" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">technology</span>
+        <span class="source-chip clickable" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">cryptocurrency</span>
+        <span class="source-chip clickable" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">Africa business</span>
+        <span class="source-chip clickable" onclick="$('#news-input').value=this.textContent;$('#news-form').dispatchEvent(new Event('submit'))">climate change</span>
       </div>
 
       <div id="news-results">
@@ -124,7 +124,6 @@
       </div>
     </section>
 
-    <!-- ── PANEL: Scraper ───────────────────────────────────────────── -->
     <section class="panel" id="panel-scrape">
       <div class="panel-title">Web Scraper</div>
       <div class="panel-subtitle">
@@ -147,22 +146,21 @@
       </div>
     </section>
 
-    <!-- ── PANEL: Chat ──────────────────────────────────────────────── -->
-    <section class="panel" id="panel-chat" style="padding:0;max-width:100%">
+    <section class="panel" id="panel-chat">
       <div class="chat-layout">
         <div class="chat-toolbar">
-          <label>Mode:</label>
+          <label for="chat-mode">Mode:</label>
           <select id="chat-mode">
             <option value="general">🔍 General Assistant</option>
             <option value="nav">🗺️ Navigation Helper</option>
             <option value="crypto">₿ Crypto Advisor</option>
           </select>
 
-          <label style="margin-left:14px">Site context <span style="font-size:11px;color:var(--text-dim)">(for nav mode)</span>:</label>
-          <input type="text" id="chat-site-context" style="width:260px"
+          <label class="chat-context-label" for="chat-site-context">Site context <span class="text-dim-sm">(for nav mode)</span>:</label>
+          <input class="chat-site-context-input" type="text" id="chat-site-context"
                  placeholder="e.g. Dira News: Home, Tech, Sport, Business, Weather. Search bar at top.">
 
-          <button class="btn btn-secondary" id="chat-clear" style="margin-left:auto">🗑️ Clear</button>
+          <button class="btn btn-secondary chat-clear-btn" id="chat-clear">🗑️ Clear</button>
         </div>
 
         <div class="chat-messages" id="chat-messages"></div>
@@ -174,7 +172,6 @@
       </div>
     </section>
 
-    <!-- ── PANEL: Crypto ────────────────────────────────────────────── -->
     <section class="panel" id="panel-crypto">
       <div class="panel-title">Crypto Signals</div>
       <div class="panel-subtitle">
@@ -189,8 +186,7 @@
         </div>
       </form>
 
-      <!-- Quick coins -->
-      <div class="input-group" style="flex-wrap:wrap;margin-bottom:18px">
+      <div class="input-group">
         <button class="btn btn-secondary quick-coin" data-coin="bitcoin">₿ Bitcoin</button>
         <button class="btn btn-secondary quick-coin" data-coin="ethereum">⟠ Ethereum</button>
         <button class="btn btn-secondary quick-coin" data-coin="solana">◎ Solana</button>
@@ -208,17 +204,16 @@
         </div>
       </div>
 
-      <!-- Trending -->
-      <div style="margin-top:28px">
-        <div style="font-size:14px;font-weight:600;margin-bottom:10px">🔥 Trending Now (CoinGecko)</div>
+      <div class="trending-section">
+        <div class="trending-title">🔥 Trending Now (CoinGecko)</div>
         <div class="trending-list" id="trending-list">
           <div class="loader"><div class="spinner"></div>Loading…</div>
         </div>
       </div>
     </section>
 
-  </div><!-- main-content -->
-</div><!-- app-layout -->
+  </div>
+</div>
 
 <div id="toast-container"></div>
 

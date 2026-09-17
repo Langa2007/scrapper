@@ -84,6 +84,15 @@ img { max-width: 100%; }
   padding: 14px 18px;
   border-top: 1px solid var(--border);
 }
+.sidebar-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.sidebar-api {
+  font-size: 11px;
+  color: var(--text-dim);
+}
 .status-dot {
   display: inline-block;
   width: 8px; height: 8px;
@@ -215,6 +224,13 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
   text-decoration: none;
 }
 .source-chip:hover { background: var(--surface); }
+.source-chip.clickable { cursor: pointer; }
+
+.quick-examples {
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
 
 .badge {
   display: inline-block;
@@ -251,6 +267,8 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
 .stat-value.negative { color: #f85149; }
 .disclaimer { font-size: 11px; color: var(--text-dim); margin-top: 14px; }
 
+.trending-section { margin-top: 28px; }
+.trending-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .trending-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .trending-pill {
   background: var(--surface2);
@@ -267,6 +285,7 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
 .trending-pill:hover { border-color: var(--accent); }
 .trending-pill img { width: 18px; height: 18px; border-radius: 50%; }
 
+#panel-chat { padding: 0; max-width: 100%; }
 .chat-layout { display: flex; flex-direction: column; height: calc(100vh - 52px); }
 .chat-toolbar {
   display: flex;
@@ -277,6 +296,10 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
   flex-wrap: wrap;
 }
 .chat-toolbar label { margin: 0; color: var(--text-muted); font-size: 13px; }
+.chat-context-label { margin-left: 14px; }
+.chat-site-context-input { width: 260px; }
+.chat-clear-btn { margin-left: auto; }
+.text-dim-sm { font-size: 11px; color: var(--text-dim); }
 .chat-toolbar select, .chat-toolbar input { padding: 6px 12px; font-size: 13px; }
 .chat-messages {
   flex: 1;

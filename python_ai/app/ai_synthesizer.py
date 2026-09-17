@@ -29,8 +29,8 @@ class AISynthesizer:
                 "confidence": "low"
             }
 
-        context_parts = []
-        sources = []
+        context_parts: List[str] = []
+        sources: List[Dict[str, Any]] = []
         for idx, doc in enumerate(documents[:5], 1):
             title = doc.get("title", f"Source {idx}")
             url = doc.get("url", "")
@@ -50,7 +50,7 @@ class AISynthesizer:
                     f"2. Cite sources using [1], [2], etc.\n"
                     f"3. Highlight key facts and takeaways."
                 )
-                response = self.gemini_client.models.generate_content(
+                response = self.gemini_client.models.generate_content(  # pyright: ignore[reportUnknownMemberType]
                     model=settings.default_model,
                     contents=prompt
                 )
@@ -66,7 +66,7 @@ class AISynthesizer:
         return self._heuristic_synthesis(query, documents, sources)
 
     def format_news_feed(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        formatted = []
+        formatted: List[Dict[str, Any]] = []
         for art in articles:
             summary = art.get("snippet") or ""
             text = art.get("text") or ""

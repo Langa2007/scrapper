@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -7,9 +7,9 @@ import httpx
 from python_ai.app.config import settings
 
 try:
-    from ddgs import DDGS
+    from ddgs import DDGS  # pyright: ignore[reportUnknownVariableType, reportMissingImports]
 except ImportError:
-    from duckduckgo_search import DDGS
+    from duckduckgo_search import DDGS  # pyright: ignore[reportUnknownVariableType, reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class SearchEngine:
     def _search_duckduckgo(
         self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
     ) -> List[Dict[str, Any]]:
-        results = []
+        results: List[Dict[str, Any]] = []
         with DDGS() as ddgs:
             if search_type == "news":
                 items = ddgs.news(query, max_results=max_results, timelimit=timelimit)
@@ -92,7 +92,7 @@ class SearchEngine:
             response = client.get(endpoint, params=params)
             response.raise_for_status()
             payload = response.json()
-        results = []
+        results: List[Dict[str, Any]] = []
         for item in payload.get("results", [])[:max_results]:
             results.append({
                 "title": item.get("title", ""), "url": item.get("url", ""),
@@ -128,15 +128,21 @@ class SearchEngine:
 
     @staticmethod
     def _deduplicate(items: Iterable[Dict[str, Any]], max_results: int) -> List[Dict[str, Any]]:
-        seen, results = set(), []
+        seen: Set[str] = set()
+        results: List[Dict[str, Any]] = []
         for item in items:
-            raw_url = item.get("url", "")
-            if not raw_url:
+            raw_url_val = item.get("url", "")
+            if not isinstance(raw_url_val, str) or not raw_url_val:
                 continue
+            raw_url: str = raw_url_val
             parsed = urlsplit(raw_url)
-            clean_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(
-                [(k, v) for k, v in parse_qsl(parsed.query) if not k.lower().startswith("utm_")]
-            ), ""))
+            clean_url = urlunsplit((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                urlencode([(k, v) for k, v in parse_qsl(parsed.query) if not k.lower().startswith("utm_")]),
+                "",
+            ))
             if clean_url in seen:
                 continue
             seen.add(clean_url)

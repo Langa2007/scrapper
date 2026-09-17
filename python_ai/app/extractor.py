@@ -43,8 +43,10 @@ class ContentExtractor:
                 title = soup.title.string.strip()
 
             meta_desc = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
-            if not description and meta_desc and meta_desc.get("content"):
-                description = meta_desc["content"].strip()
+            if not description and meta_desc:
+                content = meta_desc.get("content")
+                if isinstance(content, str):
+                    description = content.strip()
 
             lines = (line.strip() for line in soup.get_text().splitlines())
             chunks = (phrase.strip() for line in lines for phrase in line.split("  "))

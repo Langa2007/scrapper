@@ -69,7 +69,7 @@ def _detect_coin(message: str) -> Optional[str]:
     return None
 
 
-def _gemini_chat(session: _Session, user_message: str, extra_context: str = "") -> str:
+def _gemini_chat(session: _Session, user_message: str, extra_context: str = "") -> Optional[str]:
     try:
         from google import genai
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -100,11 +100,13 @@ def _gemini_chat(session: _Session, user_message: str, extra_context: str = "") 
             conversation += f"{role_label}: {turn['content']}\n"
         conversation += f"User: {user_message}\nAssistant:"
 
-        response = client.models.generate_content(
+        response = client.models.generate_content(  # pyright: ignore[reportUnknownMemberType]
             model=settings.default_model,
             contents=conversation
         )
-        return response.text.strip()
+        if response.text:
+            return response.text.strip()
+        return None
     except Exception as e:
         logger.error("Gemini chat error: %s", e)
         return None
@@ -157,7 +159,7 @@ def chat(
     session.add("user", message)
 
     extra_context = ""
-    sources = []
+    sources: List[Dict[str, str]] = []
 
     if mode == "crypto" or _detect_coin(message):
         coin = _detect_coin(message)
@@ -179,7 +181,7 @@ def chat(
         try:
             results = search_engine.search_web(message, max_results=3)
             if results:
-                parts = []
+                parts: List[str] = []
                 for r in results:
                     parts.append(f"{r['title']}: {r.get('snippet', '')[:200]}")
                     sources.append({"title": r["title"], "url": r["url"]})

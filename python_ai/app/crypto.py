@@ -1,6 +1,7 @@
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from collections.abc import Callable, Mapping
+from typing import Any, Optional, TypeVar, cast
 
 import httpx
 
@@ -10,17 +11,26 @@ logger = logging.getLogger(__name__)
 
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 _HEADERS = {"accept": "application/json"}
-
-_cache: Dict[str, tuple] = {}
 _CACHE_TTL = 60
+_COIN_LIST_TTL = 3600
+
+T = TypeVar("T")
+
+Signal = dict[str, str | float]
+JsonObject = Mapping[str, Any]
+
+_cache: dict[str, tuple[object, float]] = {}
+_coin_list_cache: list[JsonObject] | None = None
+_coin_list_ts: float = 0.0
 
 
-def _cached(key: str, fetch_fn):
+def _cached(key: str, fetch_fn: Callable[[], T]) -> T:
     now = time.monotonic()
-    if key in _cache:
-        val, ts = _cache[key]
+    cached = _cache.get(key)
+    if cached is not None:
+        val, ts = cached
         if now - ts < _CACHE_TTL:
-            return val
+            return cast(T, val)
     val = fetch_fn()
     _cache[key] = (val, now)
     return val
@@ -33,7 +43,58 @@ def _client() -> httpx.Client:
     return httpx.Client(timeout=settings.coingecko_timeout_sec, headers=headers)
 
 
-def _signal(change_24h: float, change_7d: Optional[float]) -> Dict[str, str]:
+def _as_mapping(value: object) -> JsonObject:
+    if isinstance(value, Mapping):
+        return cast(JsonObject, value)
+    return {}
+
+
+def _as_json_list(value: object) -> list[JsonObject]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    return [_as_mapping(item) for item in items]
+
+
+def _json_object(response: httpx.Response) -> JsonObject:
+    return _as_mapping(response.json())
+
+
+def _json_list(response: httpx.Response) -> list[JsonObject]:
+    return _as_json_list(response.json())
+
+
+def _string(value: object, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
+
+def _number(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return default
+
+
+def _optional_number(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
+
+
+def _signal(change_24h: float, change_7d: Optional[float]) -> Signal:
     score = change_24h
     if change_7d is not None:
         score = change_24h * 0.6 + change_7d * 0.4
@@ -52,26 +113,27 @@ def _signal(change_24h: float, change_7d: Optional[float]) -> Dict[str, str]:
     return {"signal": label, "color": color, "momentum_score": round(score, 2)}
 
 
-def _format_coin(coin: Dict[str, Any]) -> Dict[str, Any]:
-    market = coin.get("market_data", {})
-    current_usd = (market.get("current_price") or {}).get("usd")
-    change_24h = (market.get("price_change_percentage_24h") or 0)
-    change_7d = market.get("price_change_percentage_7d")
-    change_1h = (market.get("price_change_percentage_1h_in_currency") or {}).get("usd")
-    market_cap = (market.get("market_cap") or {}).get("usd")
-    volume_24h = (market.get("total_volume") or {}).get("usd")
-    high_24h = (market.get("high_24h") or {}).get("usd")
-    low_24h = (market.get("low_24h") or {}).get("usd")
-    ath = (market.get("ath") or {}).get("usd")
-    atl = (market.get("atl") or {}).get("usd")
+def _format_coin(coin: JsonObject) -> dict[str, Any]:
+    market = _as_mapping(coin.get("market_data"))
+    current_usd = _optional_number(_as_mapping(market.get("current_price")).get("usd"))
+    change_24h = _number(market.get("price_change_percentage_24h"))
+    change_7d = _optional_number(market.get("price_change_percentage_7d"))
+    change_1h = _optional_number(_as_mapping(market.get("price_change_percentage_1h_in_currency")).get("usd"))
+    market_cap = _optional_number(_as_mapping(market.get("market_cap")).get("usd"))
+    volume_24h = _optional_number(_as_mapping(market.get("total_volume")).get("usd"))
+    high_24h = _optional_number(_as_mapping(market.get("high_24h")).get("usd"))
+    low_24h = _optional_number(_as_mapping(market.get("low_24h")).get("usd"))
+    ath = _optional_number(_as_mapping(market.get("ath")).get("usd"))
+    atl = _optional_number(_as_mapping(market.get("atl")).get("usd"))
+    image = _as_mapping(coin.get("image"))
 
     sig = _signal(change_24h, change_7d)
 
     return {
-        "id": coin.get("id"),
-        "name": coin.get("name"),
-        "symbol": (coin.get("symbol") or "").upper(),
-        "image": (coin.get("image") or {}).get("small", ""),
+        "id": _string(coin.get("id")),
+        "name": _string(coin.get("name")),
+        "symbol": _string(coin.get("symbol")).upper(),
+        "image": _string(image.get("small")),
         "price_usd": current_usd,
         "change_1h_pct": round(change_1h, 2) if change_1h is not None else None,
         "change_24h_pct": round(change_24h, 2),
@@ -85,17 +147,17 @@ def _format_coin(coin: Dict[str, Any]) -> Dict[str, Any]:
         "signal": sig["signal"],
         "signal_color": sig["color"],
         "momentum_score": sig["momentum_score"],
-        "last_updated": coin.get("last_updated"),
+        "last_updated": _string(coin.get("last_updated")),
         "disclaimer": "Signal based on momentum calculation. Not financial advice.",
     }
 
 
-def get_coin(query: str) -> Optional[Dict[str, Any]]:
+def get_coin(query: str) -> Optional[dict[str, Any]]:
     coin_id = _resolve_id(query)
     if not coin_id:
         return None
 
-    def fetch():
+    def fetch() -> dict[str, Any]:
         with _client() as c:
             r = c.get(
                 f"{COINGECKO_BASE}/coins/{coin_id}",
@@ -108,7 +170,7 @@ def get_coin(query: str) -> Optional[Dict[str, Any]]:
                 },
             )
             r.raise_for_status()
-            return _format_coin(r.json())
+            return _format_coin(_json_object(r))
 
     try:
         return _cached(f"coin:{coin_id}", fetch)
@@ -117,22 +179,22 @@ def get_coin(query: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_trending() -> List[Dict[str, Any]]:
-    def fetch():
+def get_trending() -> list[dict[str, Any]]:
+    def fetch() -> list[dict[str, Any]]:
         with _client() as c:
             r = c.get(f"{COINGECKO_BASE}/search/trending")
             r.raise_for_status()
-            items = r.json().get("coins", [])
-            results = []
+            items = _as_json_list(_json_object(r).get("coins"))
+            results: list[dict[str, Any]] = []
             for entry in items[:7]:
-                item = entry.get("item", {})
+                item = _as_mapping(entry.get("item"))
                 results.append({
-                    "id": item.get("id"),
-                    "name": item.get("name"),
-                    "symbol": (item.get("symbol") or "").upper(),
-                    "image": item.get("small", ""),
-                    "market_cap_rank": item.get("market_cap_rank"),
-                    "price_btc": item.get("price_btc"),
+                    "id": _string(item.get("id")),
+                    "name": _string(item.get("name")),
+                    "symbol": _string(item.get("symbol")).upper(),
+                    "image": _string(item.get("small")),
+                    "market_cap_rank": _optional_int(item.get("market_cap_rank")),
+                    "price_btc": _optional_number(item.get("price_btc")),
                 })
             return results
 
@@ -143,8 +205,8 @@ def get_trending() -> List[Dict[str, Any]]:
         return []
 
 
-def get_market_overview(coins: List[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
-    params = {
+def get_market_overview(coins: Optional[list[str]] = None, limit: int = 10) -> list[dict[str, Any]]:
+    params: dict[str, str | int] = {
         "vs_currency": "usd",
         "order": "market_cap_desc",
         "per_page": min(limit, 25),
@@ -157,28 +219,28 @@ def get_market_overview(coins: List[str] = None, limit: int = 10) -> List[Dict[s
         if ids:
             params["ids"] = ",".join(ids)
 
-    def fetch():
+    def fetch() -> list[dict[str, Any]]:
         with _client() as c:
             r = c.get(f"{COINGECKO_BASE}/coins/markets", params=params)
             r.raise_for_status()
-            results = []
-            for item in r.json():
-                change_24h = item.get("price_change_percentage_24h") or 0
-                change_7d = item.get("price_change_percentage_7d_in_currency")
+            results: list[dict[str, Any]] = []
+            for item in _json_list(r):
+                change_24h = _number(item.get("price_change_percentage_24h"))
+                change_7d = _optional_number(item.get("price_change_percentage_7d_in_currency"))
                 sig = _signal(change_24h, change_7d)
                 results.append({
-                    "id": item.get("id"),
-                    "name": item.get("name"),
-                    "symbol": (item.get("symbol") or "").upper(),
-                    "image": item.get("image", ""),
-                    "price_usd": item.get("current_price"),
-                    "change_1h_pct": item.get("price_change_percentage_1h_in_currency"),
+                    "id": _string(item.get("id")),
+                    "name": _string(item.get("name")),
+                    "symbol": _string(item.get("symbol")).upper(),
+                    "image": _string(item.get("image")),
+                    "price_usd": _optional_number(item.get("current_price")),
+                    "change_1h_pct": _optional_number(item.get("price_change_percentage_1h_in_currency")),
                     "change_24h_pct": round(change_24h, 2),
                     "change_7d_pct": round(change_7d, 2) if change_7d is not None else None,
-                    "market_cap_usd": item.get("market_cap"),
-                    "volume_24h_usd": item.get("total_volume"),
-                    "high_24h_usd": item.get("high_24h"),
-                    "low_24h_usd": item.get("low_24h"),
+                    "market_cap_usd": _optional_number(item.get("market_cap")),
+                    "volume_24h_usd": _optional_number(item.get("total_volume")),
+                    "high_24h_usd": _optional_number(item.get("high_24h")),
+                    "low_24h_usd": _optional_number(item.get("low_24h")),
                     "signal": sig["signal"],
                     "signal_color": sig["color"],
                     "momentum_score": sig["momentum_score"],
@@ -193,26 +255,22 @@ def get_market_overview(coins: List[str] = None, limit: int = 10) -> List[Dict[s
         return []
 
 
-_COIN_LIST: Optional[List[Dict]] = None
-_COIN_LIST_TS: float = 0
-_COIN_LIST_TTL = 3600
-
-
-def _load_coin_list() -> List[Dict]:
-    global _COIN_LIST, _COIN_LIST_TS
+def _load_coin_list() -> list[JsonObject]:
+    global _coin_list_cache, _coin_list_ts
     now = time.monotonic()
-    if _COIN_LIST is not None and now - _COIN_LIST_TS < _COIN_LIST_TTL:
-        return _COIN_LIST
+    if _coin_list_cache is not None and now - _coin_list_ts < _COIN_LIST_TTL:
+        return _coin_list_cache
     try:
         with _client() as c:
             r = c.get(f"{COINGECKO_BASE}/coins/list")
             r.raise_for_status()
-            _COIN_LIST = r.json()
-            _COIN_LIST_TS = now
+            _coin_list_cache = _json_list(r)
+            _coin_list_ts = now
     except Exception as e:
         logger.warning("Could not load CoinGecko coin list: %s", e)
-        _COIN_LIST = _COIN_LIST or []
-    return _COIN_LIST
+        if _coin_list_cache is None:
+            _coin_list_cache = []
+    return _coin_list_cache
 
 
 def _resolve_id(query: str) -> Optional[str]:
@@ -220,12 +278,13 @@ def _resolve_id(query: str) -> Optional[str]:
     coin_list = _load_coin_list()
 
     for coin in coin_list:
-        if coin.get("id", "").lower() == q:
-            return coin["id"]
+        coin_id = _string(coin.get("id"))
+        if coin_id.lower() == q:
+            return coin_id
 
-    matches = [c for c in coin_list if c.get("symbol", "").lower() == q]
+    matches = [c for c in coin_list if _string(c.get("symbol")).lower() == q]
     if len(matches) == 1:
-        return matches[0]["id"]
+        return _string(matches[0].get("id")) or None
 
     prefer = {
         "btc": "bitcoin", "eth": "ethereum", "bnb": "binancecoin",
@@ -238,17 +297,17 @@ def _resolve_id(query: str) -> Optional[str]:
     if q in prefer:
         return prefer[q]
     if matches:
-        return matches[0]["id"]
+        return _string(matches[0].get("id")) or None
 
     for coin in coin_list:
-        if coin.get("name", "").lower() == q:
-            return coin["id"]
+        if _string(coin.get("name")).lower() == q:
+            return _string(coin.get("id")) or None
 
     for coin in coin_list:
-        if q in coin.get("name", "").lower():
-            return coin["id"]
+        if q in _string(coin.get("name")).lower():
+            return _string(coin.get("id")) or None
     return None
 
 
-def _resolve_ids_bulk(queries: List[str]) -> List[str]:
+def _resolve_ids_bulk(queries: list[str]) -> list[str]:
     return [rid for q in queries if (rid := _resolve_id(q))]

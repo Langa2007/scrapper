@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -66,7 +66,7 @@ class CryptoMarketRequest(BaseModel):
     limit: int = 10
 
 @app.get("/health")
-def health_check():
+def health_check() -> Dict[str, Any]:
     return {
         "status": "healthy",
         "service": "python_ai",
@@ -76,7 +76,7 @@ def health_check():
     }
 
 @app.post("/api/ai/search")
-def search_internet(req: SearchRequest):
+def search_internet(req: SearchRequest) -> Dict[str, Any]:
     if req.type == "news":
         results = search_engine.search_news(req.query, max_results=req.max_results, providers=req.providers)
     else:
@@ -90,22 +90,22 @@ def search_internet(req: SearchRequest):
     }
 
 @app.post("/api/ai/clean-html")
-def clean_html(req: CleanHtmlRequest):
+def clean_html(req: CleanHtmlRequest) -> Dict[str, Any]:
     return content_extractor.extract_from_html(req.html, url=req.url)
 
 @app.post("/api/ai/synthesize")
-def synthesize_answer(req: SynthesizeRequest):
+def synthesize_answer(req: SynthesizeRequest) -> Dict[str, Any]:
     doc_dicts = [doc.model_dump() for doc in req.documents]
     return ai_synthesizer.synthesize_answer(req.query, doc_dicts)
 
 @app.post("/api/ai/news")
-def get_news(req: NewsRequest):
+def get_news(req: NewsRequest) -> Dict[str, Any]:
     raw_news = search_engine.search_news(req.topic, max_results=req.limit, timelimit=req.timeframe)
     formatted = ai_synthesizer.format_news_feed(raw_news)
     return {"topic": req.topic, "count": len(formatted), "articles": formatted}
 
 @app.post("/api/ai/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest) -> Dict[str, Any]:
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message cannot be empty")
     return chatbot_module.chat(
@@ -116,27 +116,27 @@ def chat(req: ChatRequest):
     )
 
 @app.get("/api/ai/chat/history/{session_id}")
-def chat_history(session_id: str):
+def chat_history(session_id: str) -> Dict[str, Any]:
     return {"session_id": session_id, "history": chatbot_module.get_history(session_id)}
 
 @app.post("/api/ai/chat/clear")
-def clear_chat(req: ClearSessionRequest):
+def clear_chat(req: ClearSessionRequest) -> Dict[str, Any]:
     cleared = chatbot_module.clear_session(req.session_id)
     return {"cleared": cleared, "session_id": req.session_id}
 
 @app.post("/api/ai/crypto")
-def get_crypto(req: CryptoRequest):
+def get_crypto(req: CryptoRequest) -> Dict[str, Any]:
     data = crypto_module.get_coin(req.coin)
     if not data:
         raise HTTPException(status_code=404, detail=f"Coin '{req.coin}' not found on CoinGecko")
     return data
 
 @app.get("/api/ai/crypto/trending")
-def get_trending_crypto():
+def get_trending_crypto() -> Dict[str, Any]:
     return {"trending": crypto_module.get_trending()}
 
 @app.post("/api/ai/crypto/market")
-def get_market(req: CryptoMarketRequest):
+def get_market(req: CryptoMarketRequest) -> Dict[str, Any]:
     data = crypto_module.get_market_overview(coins=req.coins, limit=req.limit)
     return {"count": len(data), "coins": data}
 
