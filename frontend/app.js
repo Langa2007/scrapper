@@ -333,6 +333,10 @@ function appendBubble(role, text, container, sources) {
   container.scrollTop = container.scrollHeight;
 }
 
+let coinMonitorTimer = null;
+let coinMonitorDeadline = 0;
+let coinMonitorSymbol = '';
+
 function initCrypto() {
   const form = $('#crypto-form');
   const input = $('#crypto-input');
@@ -359,6 +363,76 @@ function initCrypto() {
       input.value = btn.dataset.coin;
       form.dispatchEvent(new Event('submit'));
     });
+  });
+
+  const watchInput = $('#watch-coin-input');
+  const watchBtn = $('#watch-coin-btn');
+  const stopBtn = $('#watch-coin-stop');
+  const watchStatus = $('#watch-coin-status');
+  const watchResults = $('#watch-coin-results');
+
+  const stopCoinMonitor = () => {
+    if (coinMonitorTimer) clearInterval(coinMonitorTimer);
+    coinMonitorTimer = null;
+    coinMonitorDeadline = 0;
+    coinMonitorSymbol = '';
+    if (watchStatus) watchStatus.textContent = 'Idle';
+  };
+
+  const updateWatchStatus = () => {
+    if (!coinMonitorDeadline) {
+      if (watchStatus) watchStatus.textContent = 'Idle';
+      return;
+    }
+    const remaining = Math.max(0, coinMonitorDeadline - Date.now());
+    const secs = Math.ceil(remaining / 1000);
+    const mins = Math.floor(secs / 60);
+    const rem = secs % 60;
+    if (watchStatus) watchStatus.textContent = `Monitoring ${coinMonitorSymbol} • ${mins}m ${rem}s left`;
+    if (remaining <= 0) {
+      stopCoinMonitor();
+      if (watchResults) {
+        watchResults.innerHTML = `<div class="card" style="border-color:#d29922">Monitoring window finished for ${coinMonitorSymbol.toUpperCase()}. Refresh to start a new watch.</div>`;
+      }
+    }
+  };
+
+  const refreshCoinMonitor = async () => {
+    if (!coinMonitorSymbol) return;
+    const output = $('#watch-coin-results');
+    output.innerHTML = loader(`Monitoring ${coinMonitorSymbol}...`);
+    try {
+      const data = await apiFetch('/api/v1/crypto', {
+        method: 'POST',
+        body: JSON.stringify({ coin: coinMonitorSymbol }),
+      });
+      renderCoinCard(data, output);
+      if (data.futures_setup) {
+        const badge = document.querySelector('#watch-coin-results .direction-badge');
+        if (badge) badge.textContent = (data.futures_setup.direction || 'SHORT').toUpperCase();
+      }
+    } catch (err) {
+      output.innerHTML = `<div class="card" style="border-color:#da3633">${err.message}</div>`;
+    }
+    updateWatchStatus();
+  };
+
+  watchBtn.addEventListener('click', async () => {
+    const coin = (watchInput.value || '').trim();
+    if (!coin) return;
+    coinMonitorSymbol = coin;
+    coinMonitorDeadline = Date.now() + 5 * 60 * 1000;
+    updateWatchStatus();
+    await refreshCoinMonitor();
+    if (coinMonitorTimer) clearInterval(coinMonitorTimer);
+    coinMonitorTimer = setInterval(refreshCoinMonitor, 15000);
+  });
+
+  stopBtn.addEventListener('click', () => {
+    stopCoinMonitor();
+    if (watchResults) {
+      watchResults.innerHTML = `<div class="empty-state"><div class="icon">📈</div><p>Monitor stopped. Enter another coin to start a fresh 5-minute session.</p></div>`;
+    }
   });
 
   initFuturesSignals();

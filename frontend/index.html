@@ -197,6 +197,24 @@
         <button class="btn btn-secondary quick-coin" data-coin="shib">SHIB</button>
       </div>
 
+      <div class="watch-coin-panel">
+        <div class="watch-coin-header">
+          <div class="watch-coin-title">🕵️ Watch a Coin for 5 Minutes</div>
+          <div class="watch-coin-status" id="watch-coin-status">Idle</div>
+        </div>
+        <div class="input-group watch-coin-controls">
+          <input class="main-input" id="watch-coin-input" type="text" placeholder="Enter coin: solana, eth, btc, doge…" autocomplete="off">
+          <button class="btn btn-primary" id="watch-coin-btn" type="button">Start Monitor</button>
+          <button class="btn btn-secondary" id="watch-coin-stop" type="button">Stop</button>
+        </div>
+        <div id="watch-coin-results">
+          <div class="empty-state">
+            <div class="icon">📈</div>
+            <p>Monitor one coin for 5 minutes and refresh its full signal setup automatically.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="futures-controls">
         <div class="strategy-tabs" id="futures-strategy-tabs">
           <button class="strategy-tab active" data-strategy="short" type="button">🔻 Short Setups</button>

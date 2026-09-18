@@ -267,6 +267,41 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
 .stat-value.negative { color: #f85149; }
 .disclaimer { font-size: 11px; color: var(--text-dim); margin-top: 14px; }
 
+.watch-coin-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin: 18px 0 20px;
+}
+
+.watch-coin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.watch-coin-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.watch-coin-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.watch-coin-controls {
+  margin-bottom: 12px;
+}
+
 .futures-controls {
   display: flex;
   justify-content: space-between;
