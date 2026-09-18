@@ -152,6 +152,52 @@ def _format_coin(coin: JsonObject) -> dict[str, Any]:
     }
 
 
+def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        return data
+
+    symbol = str(data.get("symbol") or "").upper()
+    if not symbol:
+        return data
+
+    matching_ticker = None
+    for ticker in get_binance_futures_tickers():
+        ticker_symbol = str(ticker.get("symbol") or "").upper()
+        ticker_base = str(ticker.get("base") or "").upper()
+        if ticker_symbol == f"{symbol}USDT" or ticker_base == symbol:
+            matching_ticker = ticker
+            break
+
+    if matching_ticker is None:
+        return data
+
+    price = float(matching_ticker.get("price") or 0.0)
+    high_24h = float(matching_ticker.get("high_24h") or 0.0)
+    low_24h = float(matching_ticker.get("low_24h") or 0.0)
+    change_pct = float(matching_ticker.get("change_pct") or 0.0)
+    direction = "short" if change_pct >= 0 else "long"
+    setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+
+    data["futures_setup"] = {
+        "symbol": matching_ticker["symbol"],
+        "direction": direction,
+        "entry": setup["entry"],
+        "sl": setup["sl"],
+        "tp1": setup["tp1"],
+        "tp2": setup["tp2"],
+        "tp3": setup["tp3"],
+        "leverage": setup["leverage"],
+        "risk_reward": setup["rr"],
+        "risk_pct": setup["risk_pct"],
+        "rationale": (
+            "Momentum is extended into resistance; wait for a small retracement before entering."
+            if direction == "short"
+            else "Dip is showing support; wait for a bounce into the lower entry zone before entering."
+        ),
+    }
+    return data
+
+
 def get_coin(query: str) -> Optional[dict[str, Any]]:
     coin_id = _resolve_id(query)
     if not coin_id:
@@ -170,7 +216,7 @@ def get_coin(query: str) -> Optional[dict[str, Any]]:
                 },
             )
             r.raise_for_status()
-            return _format_coin(_json_object(r))
+            return _attach_futures_setup(_format_coin(_json_object(r)))
 
     try:
         return _cached(f"coin:{coin_id}", fetch)
@@ -311,3 +357,174 @@ def _resolve_id(query: str) -> Optional[str]:
 
 def _resolve_ids_bulk(queries: list[str]) -> list[str]:
     return [rid for q in queries if (rid := _resolve_id(q))]
+
+
+# ---------------------------------------------------------------------------
+# Binance USDT-M Futures Screener
+# ---------------------------------------------------------------------------
+
+BINANCE_FUTURES_BASE = "https://fapi.binance.com/fapi/v1"
+_FUTURES_CACHE_TTL = 60  # seconds
+
+_futures_cache: tuple[list[dict[str, Any]], float] | None = None
+
+
+def get_binance_futures_tickers() -> list[dict[str, Any]]:
+    """Fetch all 24-h ticker stats from Binance USDT-M futures."""
+    global _futures_cache  # noqa: PLW0603
+    now = time.monotonic()
+    if _futures_cache is not None:
+        data, ts = _futures_cache
+        if now - ts < _FUTURES_CACHE_TTL:
+            return data
+
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(f"{BINANCE_FUTURES_BASE}/ticker/24hr")
+            resp.raise_for_status()
+            raw = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Binance futures ticker fetch failed: %s", exc)
+        return []
+
+    tickers: list[dict[str, Any]] = []
+    raw_list = cast(list[object], raw) if isinstance(raw, list) else []
+    for item in raw_list:
+        obj = _as_mapping(item)
+        symbol = _string(obj.get("symbol"))
+        if not symbol.endswith("USDT"):
+            continue
+        try:
+            tickers.append(
+                {
+                    "symbol": symbol,
+                    "base": symbol.replace("USDT", ""),
+                    "price": float(_string(obj.get("lastPrice")) or "0"),
+                    "change_pct": float(_string(obj.get("priceChangePercent")) or "0"),
+                    "high_24h": float(_string(obj.get("highPrice")) or "0"),
+                    "low_24h": float(_string(obj.get("lowPrice")) or "0"),
+                    "volume_usdt": float(_string(obj.get("quoteVolume")) or "0"),
+                }
+            )
+        except ValueError:
+            continue
+
+    _futures_cache = (tickers, now)
+    return tickers
+
+
+def _calculate_futures_setup(
+    price: float,
+    high_24h: float,
+    low_24h: float,
+    change_pct: float,
+    direction: str,
+) -> dict[str, Any]:
+    """Compute entry, TP1-3, stop-loss, R:R ratio, and leverage tier."""
+    range_24h = high_24h - low_24h if high_24h > low_24h else price * 0.02
+    atr_pct = range_24h / price  # rough ATR proxy as fraction of price
+
+    # Tier-based leverage: majors (BTC/ETH) → 8-10x; alts → 3-5x
+    leverage = 10 if change_pct < 20 and price > 1_000 else (8 if price > 100 else 5)
+
+    if direction == "short":
+        # Entry slightly below current price (wait for micro-pullback)
+        entry = round(price * 0.998, 6)
+        sl = round(high_24h * 1.015, 6)          # 1.5% above 24h high
+        tp1 = round(entry * (1 - 0.035), 6)       # −3.5%
+        tp2 = round(entry * (1 - 0.07), 6)        # −7%
+        tp3 = round(entry * (1 - 0.12), 6)        # −12%
+    else:  # long
+        entry = round(price * 1.002, 6)
+        sl = round(low_24h * 0.985, 6)            # 1.5% below 24h low
+        tp1 = round(entry * (1 + 0.035), 6)
+        tp2 = round(entry * (1 + 0.07), 6)
+        tp3 = round(entry * (1 + 0.12), 6)
+
+    # Risk = |entry - sl| / entry, Reward = |tp1 - entry| / entry
+    risk = abs(entry - sl) / entry if entry else 0.0
+    reward = abs(tp1 - entry) / entry if entry else 0.0
+    rr = round(reward / risk, 2) if risk > 0 else 0.0
+
+    return {
+        "entry": entry,
+        "sl": sl,
+        "tp1": tp1,
+        "tp2": tp2,
+        "tp3": tp3,
+        "leverage": leverage,
+        "rr": rr,
+        "risk_pct": round(risk * 100, 2),
+    }
+
+
+def get_futures_signals(
+    strategy: str = "short",
+    min_volume: float = 15_000_000.0,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """
+    Screen Binance USDT-M futures for actionable setups.
+
+    strategy:
+      "short"    – coins that surged ≥8% in 24h and are near the 24h high
+      "long"     – coins that dropped ≥8% in 24h and are near the 24h low
+      "trending" – top gainers by absolute |change_pct|, mixed direction
+    """
+    tickers = get_binance_futures_tickers()
+    results: list[dict[str, Any]] = []
+
+    for t in tickers:
+        price: float = t["price"]
+        high_24h: float = t["high_24h"]
+        low_24h: float = t["low_24h"]
+        change_pct: float = t["change_pct"]
+        volume_usdt: float = t["volume_usdt"]
+
+        if volume_usdt < min_volume:
+            continue
+        if price <= 0 or high_24h <= 0 or low_24h <= 0:
+            continue
+
+        range_24h = high_24h - low_24h
+        position_in_range = (price - low_24h) / range_24h if range_24h > 0 else 0.5
+        # 0 = near low, 1 = near high
+
+        if strategy == "short":
+            # Require: surged ≥8%, price in top 20% of 24h range
+            if change_pct < 8.0 or position_in_range < 0.80:
+                continue
+            direction = "short"
+            score = change_pct * position_in_range  # higher = better short candidate
+        elif strategy == "long":
+            # Require: dropped ≥8%, price in bottom 20% of 24h range
+            if change_pct > -8.0 or position_in_range > 0.20:
+                continue
+            direction = "long"
+            score = abs(change_pct) * (1 - position_in_range)
+        else:  # trending
+            if abs(change_pct) < 5.0:
+                continue
+            direction = "short" if change_pct > 0 else "long"
+            score = abs(change_pct)
+
+        setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+
+        results.append(
+            {
+                "symbol": t["symbol"],
+                "base": t["base"],
+                "direction": direction,
+                "price": price,
+                "change_pct": round(change_pct, 2),
+                "volume_usdt": volume_usdt,
+                "high_24h": high_24h,
+                "low_24h": low_24h,
+                "position_in_range": round(position_in_range * 100, 1),
+                "score": round(score, 2),
+                **setup,
+            }
+        )
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:limit]

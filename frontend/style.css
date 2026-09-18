@@ -267,6 +267,207 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
 .stat-value.negative { color: #f85149; }
 .disclaimer { font-size: 11px; color: var(--text-dim); margin-top: 14px; }
 
+.futures-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 16px;
+  flex-wrap: wrap;
+}
+
+.strategy-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.strategy-tab {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.strategy-tab.active {
+  background: rgba(35,134,54,0.18);
+  border-color: var(--accent);
+  color: #3fb950;
+}
+
+.futures-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.min-volume-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.futures-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 12px 0 20px;
+}
+
+.futures-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.futures-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.futures-symbol {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.futures-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.direction-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.direction-badge.positive {
+  background: rgba(35,134,54,0.18);
+  color: #3fb950;
+}
+
+.direction-badge.negative {
+  background: rgba(218,54,51,0.18);
+  color: #f85149;
+}
+
+.futures-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.futures-metric {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.futures-metric span {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.futures-metric strong {
+  font-size: 13px;
+}
+
+.futures-footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.rr-pill, .lev-pill {
+  display: inline-block;
+  background: rgba(31,111,235,0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88,166,255,0.25);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.futures-rationale {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.trade-setup-box {
+  margin-top: 18px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.trade-setup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.trade-setup-symbol {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.trade-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trade-setup-grid div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.trade-setup-grid span {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.trade-setup-grid strong {
+  font-size: 13px;
+}
+
+.trade-rationale {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
 .trending-section { margin-top: 28px; }
 .trending-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .trending-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }

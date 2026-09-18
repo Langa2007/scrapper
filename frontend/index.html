@@ -197,6 +197,22 @@
         <button class="btn btn-secondary quick-coin" data-coin="shib">SHIB</button>
       </div>
 
+      <div class="futures-controls">
+        <div class="strategy-tabs" id="futures-strategy-tabs">
+          <button class="strategy-tab active" data-strategy="short" type="button">🔻 Short Setups</button>
+          <button class="strategy-tab" data-strategy="long" type="button">🔺 Long Setups</button>
+          <button class="strategy-tab" data-strategy="trending" type="button">🔥 Trending Futures</button>
+        </div>
+        <div class="futures-toolbar">
+          <button class="btn btn-secondary" id="futures-refresh" type="button">Refresh</button>
+          <span class="min-volume-label">Min Volume: $15M</span>
+        </div>
+      </div>
+
+      <div id="futures-signals-grid" class="futures-grid">
+        <div class="loader"><div class="spinner"></div>Loading futures screener…</div>
+      </div>
+
       <div id="crypto-results">
         <div class="empty-state">
           <div class="icon">₿</div>

@@ -2,7 +2,7 @@
 
 An intelligent, high-throughput web scraping and AI information extraction bot combining **Go** (for concurrent crawling, rate limiting, and API gateway) and **Python** (for web searching, HTML readability cleaning, and LLM synthesis).
 
-Designed to be consumed by external systems (such as **Dira News**), CLI scripts, or future JavaScript web frontends.
+Designed to be consumed by external systems (such as **futures signals**), CLI scripts, or future JavaScript web frontends.
 
 ---
 
@@ -10,7 +10,7 @@ Designed to be consumed by external systems (such as **Dira News**), CLI scripts
 
 ```
 +-------------------------------------------------------------+
-|              Clients: Dira News / JS Frontend / CLI         |
+|              Clients: scrapper / JS Frontend / CLI         |
 +------------------------------+------------------------------+
                                |  HTTP REST (Port 8080)
                                v

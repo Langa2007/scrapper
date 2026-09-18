@@ -89,5 +89,8 @@ func fetchRobots(ctx context.Context, client *http.Client, origin string, waitFo
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil
+	}
 	return rules
 }

@@ -280,3 +280,34 @@ func (c *AIClient) GetCryptoMarket(ctx context.Context, coins []string, limit in
 	}
 	return res, nil
 }
+
+func (c *AIClient) GetFuturesSignals(ctx context.Context, strategy string, limit int, minVolume float64) (*crawler.FuturesSignalsResponse, error) {
+	if strategy == "" {
+		strategy = "short"
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if minVolume <= 0 {
+		minVolume = 15_000_000
+	}
+	url := fmt.Sprintf("%s/api/ai/crypto/futures-signals?strategy=%s&limit=%d&min_volume=%.0f",
+		c.baseURL, strategy, limit, minVolume)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var res crawler.FuturesSignalsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}

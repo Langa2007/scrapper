@@ -19,6 +19,7 @@ func SetupRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/v1/crypto", h.GetCrypto)
 	mux.HandleFunc("GET /api/v1/crypto/trending", h.GetTrendingCrypto)
 	mux.HandleFunc("POST /api/v1/crypto/market", h.GetCryptoMarket)
+	mux.HandleFunc("GET /api/v1/crypto/futures-signals", h.GetFuturesSignals)
 
 	// Serve frontend dashboard and widget files.
 	frontendDir := os.Getenv("FRONTEND_DIR")

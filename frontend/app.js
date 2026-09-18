@@ -361,7 +361,89 @@ function initCrypto() {
     });
   });
 
+  initFuturesSignals();
   loadTrending();
+}
+
+function initFuturesSignals() {
+  const grid = $('#futures-signals-grid');
+  const tabs = $$('#futures-strategy-tabs .strategy-tab');
+  const refreshBtn = $('#futures-refresh');
+
+  const setActiveTab = (strategy) => {
+    tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.strategy === strategy));
+    loadFuturesSignals(strategy);
+  };
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => setActiveTab(tab.dataset.strategy));
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    const activeStrategy = document.querySelector('.strategy-tab.active')?.dataset.strategy || 'short';
+    setActiveTab(activeStrategy);
+  });
+
+  if (grid) {
+    setActiveTab('short');
+  }
+}
+
+async function loadFuturesSignals(strategy = 'short') {
+  const container = $('#futures-signals-grid');
+  if (!container) return;
+
+  container.innerHTML = loader(`Loading ${strategy} setups...`);
+  try {
+    const data = await apiFetch(`/api/v1/crypto/futures-signals?strategy=${encodeURIComponent(strategy)}&limit=6&min_volume=15000000`);
+    renderFuturesSignals(data, container);
+  } catch (err) {
+    container.innerHTML = `<div class="card" style="border-color:#da3633">${err.message}</div>`;
+  }
+}
+
+function renderFuturesSignals(data, container) {
+  if (!data || !Array.isArray(data.signals) || data.signals.length === 0) {
+    container.innerHTML = emptyState('No liquid futures setups found for this strategy.');
+    return;
+  }
+
+  container.innerHTML = data.signals.map(signal => {
+    const direction = (signal.direction || 'short').toUpperCase();
+    const directionClass = direction === 'LONG' ? 'positive' : 'negative';
+    const entry = signal.entry ?? signal.price ?? 0;
+    const rationale = signal.rationale || `${signal.symbol} is trading near the ${direction === 'SHORT' ? 'upper' : 'lower'} range and is filtering for a ${direction.toLowerCase()} setup.`;
+
+    return `
+      <div class="futures-card">
+        <div class="futures-header">
+          <div>
+            <div class="futures-symbol">${signal.symbol}</div>
+            <div class="futures-subtitle">${signal.base || signal.symbol.replace('USDT', '')} • ${signal.change_pct >= 0 ? '+' : ''}${Number(signal.change_pct || 0).toFixed(2)}%</div>
+          </div>
+          <span class="direction-badge ${directionClass}">${direction}</span>
+        </div>
+
+        <div class="futures-metric-grid">
+          <div class="futures-metric"><span>Entry</span><strong>$${Number(entry).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div class="futures-metric"><span>TP1</span><strong>$${Number(signal.tp1 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div class="futures-metric"><span>TP2</span><strong>$${Number(signal.tp2 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div class="futures-metric"><span>TP3</span><strong>$${Number(signal.tp3 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div class="futures-metric"><span>SL</span><strong>$${Number(signal.sl || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div class="futures-metric"><span>R:R</span><strong>${Number(signal.rr || 0).toFixed(2)} : 1</strong></div>
+          <div class="futures-metric"><span>Leverage</span><strong>${Number(signal.leverage || 0)}x</strong></div>
+          <div class="futures-metric"><span>Vol</span><strong>$${Number(signal.volume_usdt || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></div>
+        </div>
+
+        <div class="futures-footer">
+          <span class="rr-pill">${Number(signal.rr || 0).toFixed(2)} R:R</span>
+          <span class="lev-pill">${Number(signal.leverage || 0)}x Leverage</span>
+        </div>
+
+        <div class="futures-rationale">${rationale}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 async function loadTrending() {
@@ -393,6 +475,30 @@ function renderCoinCard(d, container) {
   const priceDisplay = d.price_usd >= 0.01
     ? '$' + d.price_usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
     : '$' + d.price_usd.toFixed(8);
+
+  let futuresMarkup = '';
+  if (d.futures_setup) {
+    const s = d.futures_setup;
+    futuresMarkup = `
+      <div class="trade-setup-box">
+        <div class="trade-setup-header">
+          <span class="direction-badge ${s.direction === 'long' ? 'positive' : 'negative'}">${(s.direction || 'SHORT').toUpperCase()}</span>
+          <span class="trade-setup-symbol">${s.symbol}</span>
+        </div>
+        <div class="trade-setup-grid">
+          <div><span>Entry</span><strong>$${Number(s.entry || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div><span>TP1</span><strong>$${Number(s.tp1 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div><span>TP2</span><strong>$${Number(s.tp2 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div><span>TP3</span><strong>$${Number(s.tp3 || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div><span>SL</span><strong>$${Number(s.sl || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong></div>
+          <div><span>R:R</span><strong>${Number(s.risk_reward || 0).toFixed(2)} : 1</strong></div>
+          <div><span>Leverage</span><strong>${Number(s.leverage || 0)}x</strong></div>
+          <div><span>Risk</span><strong>${Number(s.risk_pct || 0).toFixed(2)}%</strong></div>
+        </div>
+        <div class="trade-rationale">${s.rationale || 'Trade setup generated from Binance futures range and volume.'}</div>
+      </div>
+    `;
+  }
 
   container.innerHTML = `
     <div class="crypto-card">
@@ -443,6 +549,7 @@ function renderCoinCard(d, container) {
         </div>
       </div>
 
+      ${futuresMarkup}
       <div class="disclaimer">${d.disclaimer}</div>
     </div>`;
 }

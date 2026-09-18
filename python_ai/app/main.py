@@ -140,5 +140,16 @@ def get_market(req: CryptoMarketRequest) -> Dict[str, Any]:
     data = crypto_module.get_market_overview(coins=req.coins, limit=req.limit)
     return {"count": len(data), "coins": data}
 
+@app.get("/api/ai/crypto/futures-signals")
+def get_futures_signals(
+    strategy: str = "short",
+    limit: int = 10,
+    min_volume: float = 15_000_000.0,
+) -> Dict[str, Any]:
+    signals = crypto_module.get_futures_signals(
+        strategy=strategy, min_volume=min_volume, limit=limit
+    )
+    return {"count": len(signals), "strategy": strategy, "signals": signals}
+
 if __name__ == "__main__":
     uvicorn.run("python_ai.app.main:app", host=settings.host, port=settings.port, reload=True)

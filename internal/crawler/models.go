@@ -101,3 +101,30 @@ type CryptoMarketRequest struct {
 	Coins []string `json:"coins,omitempty"`
 	Limit int      `json:"limit,omitempty"`
 }
+
+type FuturesSignal struct {
+	Symbol          string  `json:"symbol"`
+	Base            string  `json:"base"`
+	Direction       string  `json:"direction"`
+	Price           float64 `json:"price"`
+	ChangePct       float64 `json:"change_pct"`
+	VolumeUSDT      float64 `json:"volume_usdt"`
+	High24h         float64 `json:"high_24h"`
+	Low24h          float64 `json:"low_24h"`
+	PositionInRange float64 `json:"position_in_range"`
+	Score           float64 `json:"score"`
+	Entry           float64 `json:"entry"`
+	SL              float64 `json:"sl"`
+	TP1             float64 `json:"tp1"`
+	TP2             float64 `json:"tp2"`
+	TP3             float64 `json:"tp3"`
+	Leverage        int     `json:"leverage"`
+	RR              float64 `json:"rr"`
+	RiskPct         float64 `json:"risk_pct"`
+}
+
+type FuturesSignalsResponse struct {
+	Count    int             `json:"count"`
+	Strategy string          `json:"strategy"`
+	Signals  []FuturesSignal `json:"signals"`
+}

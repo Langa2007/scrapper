@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"scrapper/internal/crawler"
@@ -295,6 +296,35 @@ func (h *Handler) GetCryptoMarket(w http.ResponseWriter, r *http.Request) {
 	data, err := h.aiClient.GetCryptoMarket(r.Context(), req.Coins, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "market error: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) GetFuturesSignals(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	strategy := q.Get("strategy")
+	if strategy == "" {
+		strategy = "short"
+	}
+
+	limit := 10
+	if ls := q.Get("limit"); ls != "" {
+		if n, err := strconv.Atoi(ls); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	minVolume := 15_000_000.0
+	if mv := q.Get("min_volume"); mv != "" {
+		if v, err := strconv.ParseFloat(mv, 64); err == nil && v > 0 {
+			minVolume = v
+		}
+	}
+
+	data, err := h.aiClient.GetFuturesSignals(r.Context(), strategy, limit, minVolume)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "futures signals error: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, data)
