@@ -453,6 +453,18 @@ def _calculate_futures_setup(
     }
 
 
+def _entry_is_still_live(price: float, entry: float, direction: str) -> bool:
+    if not price or not entry:
+        return False
+    if direction == "short":
+        # entry zone was a small pullback/retest; once price moves beyond ~0.8% above entry, it is stale
+        return price <= entry * 1.008
+    if direction == "long":
+        # long entry zone was near support; once price drops more than ~0.8% below entry, it is stale
+        return price >= entry * 0.992
+    return True
+
+
 def get_futures_signals(
     strategy: str = "short",
     min_volume: float = 15_000_000.0,
@@ -468,6 +480,7 @@ def get_futures_signals(
     """
     tickers = get_binance_futures_tickers()
     results: list[dict[str, Any]] = []
+    now_ts = time.time()
 
     for t in tickers:
         price: float = t["price"]
@@ -504,6 +517,8 @@ def get_futures_signals(
             score = abs(change_pct)
 
         setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+        if not _entry_is_still_live(price, setup["entry"], direction):
+            continue
 
         results.append(
             {
@@ -517,6 +532,9 @@ def get_futures_signals(
                 "low_24h": low_24h,
                 "position_in_range": round(position_in_range * 100, 1),
                 "score": round(score, 2),
+                "refreshed_at": now_ts,
+                "expires_at": now_ts + 180,
+                "is_stale": False,
                 **setup,
             }
         )

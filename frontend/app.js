@@ -365,6 +365,24 @@ function initCrypto() {
   loadTrending();
 }
 
+let futuresRefreshTimer = null;
+
+function isFuturesSignalStale(signal) {
+  const price = Number(signal.price ?? 0);
+  const entry = Number(signal.entry ?? 0);
+  const direction = String(signal.direction || '').toLowerCase();
+  const expiresAt = Number(signal.expires_at ?? 0);
+
+  if (expiresAt && Date.now() / 1000 > expiresAt) {
+    return true;
+  }
+
+  if (!price || !entry) return true;
+  if (direction === 'short') return price > entry * 1.008;
+  if (direction === 'long') return price < entry * 0.992;
+  return false;
+}
+
 function initFuturesSignals() {
   const grid = $('#futures-signals-grid');
   const tabs = $$('#futures-strategy-tabs .strategy-tab');
@@ -384,6 +402,12 @@ function initFuturesSignals() {
     setActiveTab(activeStrategy);
   });
 
+  if (futuresRefreshTimer) clearInterval(futuresRefreshTimer);
+  futuresRefreshTimer = setInterval(() => {
+    const activeStrategy = document.querySelector('.strategy-tab.active')?.dataset.strategy || 'short';
+    setActiveTab(activeStrategy);
+  }, 15000);
+
   if (grid) {
     setActiveTab('short');
   }
@@ -396,7 +420,8 @@ async function loadFuturesSignals(strategy = 'short') {
   container.innerHTML = loader(`Loading ${strategy} setups...`);
   try {
     const data = await apiFetch(`/api/v1/crypto/futures-signals?strategy=${encodeURIComponent(strategy)}&limit=6&min_volume=15000000`);
-    renderFuturesSignals(data, container);
+    const filtered = (data.signals || []).filter(signal => !isFuturesSignalStale(signal));
+    renderFuturesSignals({ ...data, signals: filtered }, container);
   } catch (err) {
     container.innerHTML = `<div class="card" style="border-color:#da3633">${err.message}</div>`;
   }
@@ -404,7 +429,7 @@ async function loadFuturesSignals(strategy = 'short') {
 
 function renderFuturesSignals(data, container) {
   if (!data || !Array.isArray(data.signals) || data.signals.length === 0) {
-    container.innerHTML = emptyState('No liquid futures setups found for this strategy.');
+    container.innerHTML = emptyState('No active futures setups found for this strategy.');
     return;
   }
 
