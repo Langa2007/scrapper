@@ -153,9 +153,6 @@ def _format_coin(coin: JsonObject) -> dict[str, Any]:
 
 
 def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(data, dict):
-        return data
-
     symbol = str(data.get("symbol") or "").upper()
     if not symbol:
         return data
@@ -421,8 +418,6 @@ def _calculate_futures_setup(
     direction: str,
 ) -> dict[str, Any]:
     """Compute entry, TP1-3, stop-loss, R:R ratio, and leverage tier."""
-    range_24h = high_24h - low_24h if high_24h > low_24h else price * 0.02
-    atr_pct = range_24h / price  # rough ATR proxy as fraction of price
 
     # Tier-based leverage: majors (BTC/ETH) → 8-10x; alts → 3-5x
     leverage = 10 if change_pct < 20 and price > 1_000 else (8 if price > 100 else 5)
