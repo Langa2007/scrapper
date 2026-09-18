@@ -501,6 +501,31 @@ async function loadFuturesSignals(strategy = 'short') {
   }
 }
 
+function getVolatilityStatus(signal) {
+  const price = Number(signal.price ?? 0);
+  const high = Number(signal.high_24h ?? 0);
+  const low = Number(signal.low_24h ?? 0);
+  const explicit = (signal.volatility || '').toLowerCase();
+  if (explicit) {
+    const className = explicit === 'volatile' ? 'volatile' : explicit === 'stable' ? 'stable' : explicit === 'moderate' ? 'moderate' : 'unknown';
+    const label = explicit === 'unknown' ? 'Volatility unavailable' : explicit.charAt(0).toUpperCase() + explicit.slice(1);
+    return {
+      label,
+      className,
+      pct: Number(signal.volatility_pct ?? 0).toFixed(2),
+    };
+  }
+
+  if (!price || !high || !low) {
+    return { label: 'Volatility unavailable', className: 'unknown', pct: '0.00' };
+  }
+
+  const pct = ((high - low) / price) * 100;
+  const status = pct >= 4 ? 'Volatile' : pct > 2 ? 'Moderate' : 'Stable';
+  const className = pct >= 4 ? 'volatile' : pct > 2 ? 'moderate' : 'stable';
+  return { label: status, className, pct: pct.toFixed(2) };
+}
+
 function renderFuturesSignals(data, container) {
   if (!data || !Array.isArray(data.signals) || data.signals.length === 0) {
     container.innerHTML = emptyState('No active futures setups found for this strategy.');
@@ -512,6 +537,7 @@ function renderFuturesSignals(data, container) {
     const directionClass = direction === 'LONG' ? 'positive' : 'negative';
     const entry = signal.entry ?? signal.price ?? 0;
     const rationale = signal.rationale || `${signal.symbol} is trading near the ${direction === 'SHORT' ? 'upper' : 'lower'} range and is filtering for a ${direction.toLowerCase()} setup.`;
+    const volatility = getVolatilityStatus(signal);
 
     return `
       <div class="futures-card">
@@ -537,6 +563,7 @@ function renderFuturesSignals(data, container) {
         <div class="futures-footer">
           <span class="rr-pill">${Number(signal.rr || 0).toFixed(2)} R:R</span>
           <span class="lev-pill">${Number(signal.leverage || 0)}x Leverage</span>
+          <span class="vol-pill ${volatility.className}">${volatility.label} • ${volatility.pct}%</span>
         </div>
 
         <div class="futures-rationale">${rationale}</div>
@@ -571,6 +598,9 @@ async function loadTrending() {
 
 function renderCoinCard(d, container) {
   const badgeClass = signalBadgeClass(d.signal);
+  const volatilityLabel = d?.futures_setup ? ((d.futures_setup.volatility || 'unknown').toLowerCase() === 'unknown' ? 'Volatility unavailable' : (d.futures_setup.volatility || 'Unknown').charAt(0).toUpperCase() + (d.futures_setup.volatility || 'Unknown').slice(1)) : 'Volatility unavailable';
+  const volatilityClass = d?.futures_setup ? ((d.futures_setup.volatility || 'unknown').toLowerCase() === 'volatile' ? 'volatile' : (d.futures_setup.volatility || 'unknown').toLowerCase() === 'stable' ? 'stable' : (d.futures_setup.volatility || 'unknown').toLowerCase() === 'moderate' ? 'moderate' : 'unknown') : 'unknown';
+  const volatilityPct = d?.futures_setup ? Number(d.futures_setup.volatility_pct ?? 0).toFixed(2) : '0.00';
   const priceDisplay = d.price_usd >= 0.01
     ? '$' + d.price_usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
     : '$' + d.price_usd.toFixed(8);
@@ -578,6 +608,10 @@ function renderCoinCard(d, container) {
   let futuresMarkup = '';
   if (d.futures_setup) {
     const s = d.futures_setup;
+    const vol = (s.volatility || '').toLowerCase();
+    const volLabel = vol === 'unknown' ? 'Volatility unavailable' : (vol.charAt(0).toUpperCase() + vol.slice(1));
+    const volClass = vol === 'volatile' ? 'volatile' : vol === 'stable' ? 'stable' : vol === 'moderate' ? 'moderate' : 'unknown';
+    const volPct = Number(s.volatility_pct ?? 0).toFixed(2);
     futuresMarkup = `
       <div class="trade-setup-box">
         <div class="trade-setup-header">
@@ -594,6 +628,9 @@ function renderCoinCard(d, container) {
           <div><span>Leverage</span><strong>${Number(s.leverage || 0)}x</strong></div>
           <div><span>Risk</span><strong>${Number(s.risk_pct || 0).toFixed(2)}%</strong></div>
         </div>
+        <div class="trade-setup-inline-meta">
+          <span class="vol-pill ${volClass}">${volLabel} • ${volPct}%</span>
+        </div>
         <div class="trade-rationale">${s.rationale || 'Trade setup generated from Binance futures range and volume.'}</div>
       </div>
     `;
@@ -605,7 +642,10 @@ function renderCoinCard(d, container) {
         ${d.image ? `<img class="crypto-icon" src="${d.image}" alt="">` : ''}
         <div>
           <div class="crypto-name">${d.name} <span class="crypto-symbol">${d.symbol}</span></div>
-          <div style="margin-top:4px"><span class="badge ${badgeClass}">${d.signal}</span></div>
+          <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+            <span class="badge ${badgeClass}">${d.signal}</span>
+            <span class="vol-pill ${volatilityClass}">${volatilityLabel} • ${volatilityPct}%</span>
+          </div>
         </div>
         <div style="margin-left:auto;text-align:right">
           <div class="crypto-price">${priceDisplay}</div>

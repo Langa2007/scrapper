@@ -113,6 +113,17 @@ def _signal(change_24h: float, change_7d: Optional[float]) -> Signal:
     return {"signal": label, "color": color, "momentum_score": round(score, 2)}
 
 
+def _volatility_status(price: float, high_24h: float, low_24h: float) -> tuple[str, float]:
+    if not price or not high_24h or not low_24h:
+        return "unknown", 0.0
+    range_pct = ((high_24h - low_24h) / price) * 100.0
+    if range_pct >= 4.0:
+        return "volatile", round(range_pct, 2)
+    if range_pct > 2.0:
+        return "moderate", round(range_pct, 2)
+    return "stable", round(range_pct, 2)
+
+
 def _format_coin(coin: JsonObject) -> dict[str, Any]:
     market = _as_mapping(coin.get("market_data"))
     current_usd = _optional_number(_as_mapping(market.get("current_price")).get("usd"))
@@ -174,6 +185,7 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
     change_pct = float(matching_ticker.get("change_pct") or 0.0)
     direction = "short" if change_pct >= 0 else "long"
     setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+    volatility, volatility_pct = _volatility_status(price, high_24h, low_24h)
 
     data["futures_setup"] = {
         "symbol": matching_ticker["symbol"],
@@ -186,6 +198,8 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
         "leverage": setup["leverage"],
         "risk_reward": setup["rr"],
         "risk_pct": setup["risk_pct"],
+        "volatility": volatility,
+        "volatility_pct": volatility_pct,
         "rationale": (
             "Momentum is extended into resistance; wait for a small retracement before entering."
             if direction == "short"
@@ -520,6 +534,8 @@ def get_futures_signals(
         if not _entry_is_still_live(price, setup["entry"], direction):
             continue
 
+        volatility, volatility_pct = _volatility_status(price, high_24h, low_24h)
+
         results.append(
             {
                 "symbol": t["symbol"],
@@ -532,6 +548,8 @@ def get_futures_signals(
                 "low_24h": low_24h,
                 "position_in_range": round(position_in_range * 100, 1),
                 "score": round(score, 2),
+                "volatility": volatility,
+                "volatility_pct": volatility_pct,
                 "refreshed_at": now_ts,
                 "expires_at": now_ts + 180,
                 "is_stale": False,

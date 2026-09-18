@@ -434,15 +434,54 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
   margin-bottom: 10px;
 }
 
-.rr-pill, .lev-pill {
+.rr-pill, .lev-pill, .vol-pill {
   display: inline-block;
-  background: rgba(31,111,235,0.12);
-  color: #58a6ff;
-  border: 1px solid rgba(88,166,255,0.25);
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
+}
+
+.rr-pill {
+  background: rgba(31,111,235,0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88,166,255,0.25);
+}
+
+.lev-pill {
+  background: rgba(35,134,54,0.12);
+  color: #3fb950;
+  border: 1px solid rgba(63,185,80,0.3);
+}
+
+.vol-pill {
+  background: rgba(139,148,158,0.12);
+  color: #c9d1d9;
+  border: 1px solid rgba(139,148,158,0.35);
+}
+
+.vol-pill.volatile {
+  background: rgba(218,54,51,0.13);
+  color: #ff7b72;
+  border-color: rgba(255,123,114,0.35);
+}
+
+.vol-pill.stable {
+  background: rgba(35,134,54,0.12);
+  color: #3fb950;
+  border-color: rgba(63,185,80,0.3);
+}
+
+.vol-pill.moderate {
+  background: rgba(210,133,0,0.14);
+  color: #d29922;
+  border-color: rgba(210,133,0,0.3);
+}
+
+.vol-pill.unknown {
+  background: rgba(139,148,158,0.12);
+  color: #c9d1d9;
+  border-color: rgba(139,148,158,0.35);
 }
 
 .futures-rationale {
@@ -494,6 +533,12 @@ label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: 
 
 .trade-setup-grid strong {
   font-size: 13px;
+}
+
+.trade-setup-inline-meta {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .trade-rationale {
