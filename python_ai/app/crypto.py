@@ -117,11 +117,43 @@ def _volatility_status(price: float, high_24h: float, low_24h: float) -> tuple[s
     if not price or not high_24h or not low_24h:
         return "unknown", 0.0
     range_pct = ((high_24h - low_24h) / price) * 100.0
-    if range_pct >= 4.0:
+    if range_pct >= 8.0:
         return "volatile", round(range_pct, 2)
-    if range_pct > 2.0:
+    if range_pct >= 4.0:
         return "moderate", round(range_pct, 2)
     return "stable", round(range_pct, 2)
+
+
+def _balance_signal_mix(signals: list[dict[str, Any]], target_count: int = 6) -> list[dict[str, Any]]:
+    if target_count <= 0 or not signals:
+        return []
+    if len(signals) <= target_count:
+        return signals
+
+    volatile = sorted(
+        [s for s in signals if s.get("volatility") == "volatile"],
+        key=lambda x: x.get("score", 0),
+        reverse=True,
+    )
+    safer = sorted(
+        [s for s in signals if s.get("volatility") in {"moderate", "stable"}],
+        key=lambda x: x.get("score", 0),
+        reverse=True,
+    )
+
+    target_volatile = max(0, min(len(volatile), target_count // 2))
+    target_safer = max(0, min(len(safer), target_count - target_volatile))
+    balanced = volatile[:target_volatile] + safer[:target_safer]
+
+    seen = {id(item) for item in balanced}
+    for signal in sorted(signals, key=lambda x: x.get("score", 0), reverse=True):
+        if len(balanced) >= target_count:
+            break
+        if id(signal) not in seen:
+            balanced.append(signal)
+            seen.add(id(signal))
+
+    return balanced[:target_count]
 
 
 def _format_coin(coin: JsonObject) -> dict[str, Any]:
@@ -513,11 +545,16 @@ def get_futures_signals(
         # 0 = near low, 1 = near high
 
         if strategy == "short":
-            # Require: surged ≥8%, price in top 20% of 24h range
-            if change_pct < 8.0 or position_in_range < 0.80:
+            # High-volatility short setups are still preferred, but we also allow a safer
+            # swing-short pool so the page can mix riskier entries with more patient setups.
+            if change_pct >= 8.0 and position_in_range >= 0.80:
+                direction = "short"
+                score = change_pct * position_in_range  # higher = better short candidate
+            elif change_pct >= 5.0 and position_in_range >= 0.70:
+                direction = "short"
+                score = change_pct * position_in_range * 0.85
+            else:
                 continue
-            direction = "short"
-            score = change_pct * position_in_range  # higher = better short candidate
         elif strategy == "long":
             # Require: dropped ≥8%, price in bottom 20% of 24h range
             if change_pct > -8.0 or position_in_range > 0.20:
@@ -558,4 +595,6 @@ def get_futures_signals(
         )
 
     results.sort(key=lambda x: x["score"], reverse=True)
+    if strategy == "short":
+        results = _balance_signal_mix(results, target_count=min(limit, 6))
     return results[:limit]
