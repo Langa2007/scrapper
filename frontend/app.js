@@ -538,6 +538,7 @@ function renderFuturesSignals(data, container) {
     const entry = signal.entry ?? signal.price ?? 0;
     const rationale = signal.rationale || `${signal.symbol} is trading near the ${direction === 'SHORT' ? 'upper' : 'lower'} range and is filtering for a ${direction.toLowerCase()} setup.`;
     const volatility = getVolatilityStatus(signal);
+    const dyorWarning = volatility.className === 'volatile' ? '<span class="dyor-pill">DYOR before trading</span>' : '';
 
     return `
       <div class="futures-card">
@@ -564,6 +565,7 @@ function renderFuturesSignals(data, container) {
           <span class="rr-pill">${Number(signal.rr || 0).toFixed(2)} R:R</span>
           <span class="lev-pill">${Number(signal.leverage || 0)}x Leverage</span>
           <span class="vol-pill ${volatility.className}">${volatility.label} • ${volatility.pct}%</span>
+          ${dyorWarning}
         </div>
 
         <div class="futures-rationale">${rationale}</div>
@@ -601,6 +603,7 @@ function renderCoinCard(d, container) {
   const volatilityLabel = d?.futures_setup ? ((d.futures_setup.volatility || 'unknown').toLowerCase() === 'unknown' ? 'Volatility unavailable' : (d.futures_setup.volatility || 'Unknown').charAt(0).toUpperCase() + (d.futures_setup.volatility || 'Unknown').slice(1)) : 'Volatility unavailable';
   const volatilityClass = d?.futures_setup ? ((d.futures_setup.volatility || 'unknown').toLowerCase() === 'volatile' ? 'volatile' : (d.futures_setup.volatility || 'unknown').toLowerCase() === 'stable' ? 'stable' : (d.futures_setup.volatility || 'unknown').toLowerCase() === 'moderate' ? 'moderate' : 'unknown') : 'unknown';
   const volatilityPct = d?.futures_setup ? Number(d.futures_setup.volatility_pct ?? 0).toFixed(2) : '0.00';
+  const dyorWarning = volatilityClass === 'volatile' ? '<span class="dyor-pill">DYOR before trading</span>' : '';
   const priceDisplay = d.price_usd >= 0.01
     ? '$' + d.price_usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
     : '$' + d.price_usd.toFixed(8);
@@ -645,6 +648,7 @@ function renderCoinCard(d, container) {
           <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
             <span class="badge ${badgeClass}">${d.signal}</span>
             <span class="vol-pill ${volatilityClass}">${volatilityLabel} • ${volatilityPct}%</span>
+            ${dyorWarning}
           </div>
         </div>
         <div style="margin-left:auto;text-align:right">
