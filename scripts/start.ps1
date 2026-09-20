@@ -5,6 +5,36 @@ if (-not (Test-Path $PythonExe)) {
     $PythonExe = "python"
 }
 
+function Stop-StalePortProcess {
+    param(
+        [int]$Port
+    )
+
+    $connections = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if (-not $connections) {
+        return
+    }
+
+    foreach ($conn in $connections) {
+        $pid = $conn.OwningProcess
+        if (-not $pid) {
+            continue
+        }
+
+        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        if (-not $process) {
+            continue
+        }
+
+        Write-Host "Stopping stale process $($process.ProcessName) (PID $pid) on port $Port..."
+        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    }
+}
+
+foreach ($port in 5000, 8080) {
+    Stop-StalePortProcess -Port $port
+}
+
 Write-Host "Starting Python service on port 5000..."
 $pyProcess = Start-Process -FilePath $PythonExe -ArgumentList "-m uvicorn python_ai.app.main:app --host 127.0.0.1 --port 5000" -WorkingDirectory $WorkspaceRoot -PassThru
 

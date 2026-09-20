@@ -1,6 +1,6 @@
 import unittest
 
-from python_ai.app.crypto import _balance_signal_mix, _volatility_status
+from python_ai.app.crypto import _balance_signal_mix, _technical_confirmation, _volatility_status
 
 
 class TestVolatilityStatus(unittest.TestCase):
@@ -32,6 +32,28 @@ class TestVolatilityStatus(unittest.TestCase):
         self.assertEqual(len(mixed), 6)
         self.assertEqual(sum(1 for s in mixed if s["volatility"] == "volatile"), 3)
         self.assertEqual(sum(1 for s in mixed if s["volatility"] in {"moderate", "stable"}), 3)
+
+
+class TestTechnicalConfirmation(unittest.TestCase):
+    def test_short_requires_reversal_and_volume_confirmation(self):
+        closes = [100.0 + index for index in range(20)]
+        closes[-1] = closes[-2] - 1.0
+        confirmed, score, rsi = _technical_confirmation(closes, [100.0] * 5 + [120.0], "short")
+        self.assertTrue(confirmed)
+        self.assertGreater(score, 0)
+        self.assertGreaterEqual(rsi, 68.0)
+
+    def test_long_requires_reversal_and_volume_confirmation(self):
+        closes = [120.0 - index for index in range(20)]
+        closes[-1] = closes[-2] + 1.0
+        confirmed, _, rsi = _technical_confirmation(closes, [100.0] * 5 + [120.0], "long")
+        self.assertTrue(confirmed)
+        self.assertLessEqual(rsi, 32.0)
+
+    def test_missing_reversal_is_rejected(self):
+        closes = [100.0 + index for index in range(20)]
+        confirmed, _, _ = _technical_confirmation(closes, [100.0] * 5 + [120.0], "short")
+        self.assertFalse(confirmed)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-const API = window.SCRAPER_API_BASE || 'http://localhost:8080';
+const API = window.SCRAPER_API_BASE || `http://${window.location.hostname || 'localhost'}:8080`;
 
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];

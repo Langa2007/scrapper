@@ -1,7 +1,7 @@
 import logging
 import time
 from collections.abc import Callable, Mapping
-from typing import Any, Optional, TypeVar, cast
+from typing import Any, Optional, TypedDict, TypeVar, cast
 
 import httpx
 
@@ -16,7 +16,11 @@ _COIN_LIST_TTL = 3600
 
 T = TypeVar("T")
 
-Signal = dict[str, str | float]
+
+class Signal(TypedDict):
+    signal: str
+    color: str
+    momentum_score: float
 JsonObject = Mapping[str, Any]
 
 _cache: dict[str, tuple[object, float]] = {}
@@ -410,6 +414,8 @@ BINANCE_FUTURES_BASE = "https://fapi.binance.com/fapi/v1"
 _FUTURES_CACHE_TTL = 60  # seconds
 
 _futures_cache: tuple[list[dict[str, Any]], float] | None = None
+_klines_cache: dict[str, tuple[dict[str, list[float]], float]] = {}
+_funding_cache: tuple[dict[str, float], float] | None = None
 
 
 def get_binance_futures_tickers() -> list[dict[str, Any]]:
@@ -456,12 +462,42 @@ def get_binance_futures_tickers() -> list[dict[str, Any]]:
     return tickers
 
 
+def _get_funding_rates() -> dict[str, float]:
+    global _funding_cache  # noqa: PLW0603
+    now = time.monotonic()
+    if _funding_cache is not None and now - _funding_cache[1] < _FUTURES_CACHE_TTL:
+        return _funding_cache[0]
+    try:
+        with httpx.Client(timeout=10) as client:
+            response = client.get(f"{BINANCE_FUTURES_BASE}/premiumIndex")
+            response.raise_for_status()
+            raw = response.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Binance funding fetch failed: %s", exc)
+        return {}
+
+    rates: dict[str, float] = {}
+    if isinstance(raw, list):
+        for item in cast(list[object], raw):
+            obj = _as_mapping(item)
+            symbol = _string(obj.get("symbol"))
+            rate_text = _string(obj.get("lastFundingRate"))
+            try:
+                if symbol and rate_text:
+                    rates[symbol] = float(rate_text)
+            except ValueError:
+                continue
+    _funding_cache = (rates, now)
+    return rates
+
+
 def _calculate_futures_setup(
     price: float,
     high_24h: float,
     low_24h: float,
     change_pct: float,
     direction: str,
+    atr: float | None = None,
 ) -> dict[str, Any]:
     """Compute entry, TP1-3, stop-loss, R:R ratio, and leverage tier."""
 
@@ -471,16 +507,16 @@ def _calculate_futures_setup(
     if direction == "short":
         # Entry slightly below current price (wait for micro-pullback)
         entry = round(price * 0.998, 6)
-        sl = round(high_24h * 1.015, 6)          # 1.5% above 24h high
-        tp1 = round(entry * (1 - 0.035), 6)       # −3.5%
-        tp2 = round(entry * (1 - 0.07), 6)        # −7%
-        tp3 = round(entry * (1 - 0.12), 6)        # −12%
+        sl = round(max(high_24h * 1.005, entry + (atr * 1.5 if atr else 0.0)), 6)
+        tp1 = round(entry - (atr * 2.0 if atr else entry * 0.035), 6)
+        tp2 = round(entry - (atr * 3.5 if atr else entry * 0.07), 6)
+        tp3 = round(entry - (atr * 5.0 if atr else entry * 0.12), 6)
     else:  # long
         entry = round(price * 1.002, 6)
-        sl = round(low_24h * 0.985, 6)            # 1.5% below 24h low
-        tp1 = round(entry * (1 + 0.035), 6)
-        tp2 = round(entry * (1 + 0.07), 6)
-        tp3 = round(entry * (1 + 0.12), 6)
+        sl = round(min(low_24h * 0.995, entry - (atr * 1.5 if atr else 0.0)), 6)
+        tp1 = round(entry + (atr * 2.0 if atr else entry * 0.035), 6)
+        tp2 = round(entry + (atr * 3.5 if atr else entry * 0.07), 6)
+        tp3 = round(entry + (atr * 5.0 if atr else entry * 0.12), 6)
 
     # Risk = |entry - sl| / entry, Reward = |tp1 - entry| / entry
     risk = abs(entry - sl) / entry if entry else 0.0
@@ -511,6 +547,187 @@ def _entry_is_still_live(price: float, entry: float, direction: str) -> bool:
     return True
 
 
+def _rsi(closes: list[float], period: int = 14) -> float | None:
+    if len(closes) <= period:
+        return None
+    changes = [closes[index] - closes[index - 1] for index in range(1, len(closes))]
+    gains = [max(change, 0.0) for change in changes[-period:]]
+    losses = [max(-change, 0.0) for change in changes[-period:]]
+    average_gain = sum(gains) / period
+    average_loss = sum(losses) / period
+    if average_loss == 0:
+        return 100.0 if average_gain else 50.0
+    return 100.0 - (100.0 / (1.0 + average_gain / average_loss))
+
+
+def _technical_confirmation(  # pyright: ignore[reportUnusedFunction]
+    closes: list[float], volumes: list[float], direction: str
+) -> tuple[bool, float, float]:
+    if len(closes) < 16 or len(volumes) < 6:
+        return False, 0.0, 50.0
+
+    rsi = _rsi(closes)
+    if rsi is None:
+        return False, 0.0, 50.0
+    average_volume = sum(volumes[-6:-1]) / 5
+    volume_ratio = volumes[-1] / average_volume if average_volume > 0 else 0.0
+    reversal = closes[-1] < closes[-2] if direction == "short" else closes[-1] > closes[-2]
+    overextended = rsi >= 68.0 if direction == "short" else rsi <= 32.0
+    confirmed = overextended and reversal and volume_ratio >= 1.05
+    score = min(100.0, max(0.0, abs(rsi - 50.0) * 2.0 + min(volume_ratio, 2.0) * 15.0))
+    return confirmed, round(score, 2), round(rsi, 2)
+
+
+def _ema(values: list[float], period: int) -> float | None:
+    if len(values) < period:
+        return None
+    multiplier = 2.0 / (period + 1.0)
+    average = sum(values[:period]) / period
+    for value in values[period:]:
+        average = (value - average) * multiplier + average
+    return average
+
+
+def _atr(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float | None:
+    if len(closes) <= period or len(highs) != len(closes) or len(lows) != len(closes):
+        return None
+    true_ranges = [
+        max(highs[index] - lows[index], abs(highs[index] - closes[index - 1]), abs(lows[index] - closes[index - 1]))
+        for index in range(1, len(closes))
+    ]
+    return sum(true_ranges[-period:]) / period
+
+
+def _get_binance_klines(symbol: str) -> dict[str, list[float]]:
+    cached = _klines_cache.get(symbol)
+    now = time.monotonic()
+    if cached is not None and now - cached[1] < _FUTURES_CACHE_TTL:
+        return cached[0]
+
+    try:
+        with httpx.Client(timeout=10) as client:
+            response = client.get(
+                f"{BINANCE_FUTURES_BASE}/klines",
+                params={"symbol": symbol, "interval": "1h", "limit": 50},
+            )
+            response.raise_for_status()
+            raw = response.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Binance futures klines fetch failed for %s: %s", symbol, exc)
+        return {"opens": [], "highs": [], "lows": [], "closes": [], "volumes": []}
+
+    candles: dict[str, list[float]] = {
+        "opens": [], "highs": [], "lows": [], "closes": [], "volumes": []
+    }
+    if isinstance(raw, list):
+        for row in cast(list[object], raw):
+            if not isinstance(row, list):
+                continue
+            values = cast(list[object], row)
+            if len(values) < 6:
+                continue
+            try:
+                candles["opens"].append(float(cast(str | int | float, values[1])))
+                candles["highs"].append(float(cast(str | int | float, values[2])))
+                candles["lows"].append(float(cast(str | int | float, values[3])))
+                candles["closes"].append(float(cast(str | int | float, values[4])))
+                candles["volumes"].append(float(cast(str | int | float, values[5])))
+            except (TypeError, ValueError):
+                continue
+    _klines_cache[symbol] = (candles, now)
+    return candles
+
+
+def _multi_factor_analysis(
+    candles: dict[str, list[float]],
+    direction: str,
+    market_regime: str | None = None,
+    funding_rate: float | None = None,
+) -> dict[str, Any]:
+    opens = candles.get("opens", [])
+    highs = candles.get("highs", [])
+    lows = candles.get("lows", [])
+    closes = candles.get("closes", [])
+    volumes = candles.get("volumes", [])
+    if len(closes) < 50 or min(len(opens), len(highs), len(lows), len(volumes)) < 50:
+        return {"confirmed": False, "score": 0.0, "reason": "insufficient candle history"}
+
+    rsi = _rsi(closes)
+    ema20 = _ema(closes, 20)
+    ema50 = _ema(closes, 50)
+    atr = _atr(highs, lows, closes)
+    if rsi is None or ema20 is None or ema50 is None or atr is None or closes[-1] <= 0:
+        return {"confirmed": False, "score": 0.0, "reason": "indicator calculation unavailable"}
+
+    average_volume = sum(volumes[-6:-1]) / 5
+    volume_ratio = volumes[-1] / average_volume if average_volume > 0 else 0.0
+    candle_range = highs[-1] - lows[-1]
+    body_ratio = abs(closes[-1] - opens[-1]) / candle_range if candle_range > 0 else 0.0
+    bearish_candle = closes[-1] < opens[-1] and (closes[-1] - lows[-1]) / candle_range <= 0.35 if candle_range > 0 else False
+    bullish_candle = closes[-1] > opens[-1] and (highs[-1] - closes[-1]) / candle_range <= 0.35 if candle_range > 0 else False
+    reversal = bearish_candle if direction == "short" else bullish_candle
+    trend_aligned = (ema20 < ema50 and closes[-1] < ema20) if direction == "short" else (ema20 > ema50 and closes[-1] > ema20)
+    macd_now = (_ema(closes, 12) or 0.0) - (_ema(closes, 26) or 0.0)
+    macd_prev = (_ema(closes[:-1], 12) or 0.0) - (_ema(closes[:-1], 26) or 0.0)
+    macd_aligned = macd_now < macd_prev if direction == "short" else macd_now > macd_prev
+    regime_aligned = market_regime is None or market_regime == direction
+    funding_aligned = funding_rate is None or (
+        funding_rate > 0 if direction == "short" else funding_rate < 0
+    )
+    rsi_extreme = rsi >= 68.0 if direction == "short" else rsi <= 32.0
+    volatility_pct = atr / closes[-1] * 100.0
+
+    factors = {
+        "rsi_extreme": rsi_extreme,
+        "volume_surge": volume_ratio >= 1.05,
+        "reversal_candle": reversal and body_ratio >= 0.45,
+        "trend_aligned": trend_aligned,
+        "macd_aligned": macd_aligned,
+        "regime_aligned": regime_aligned,
+        "funding_aligned": funding_aligned,
+        "volatility_usable": 0.15 <= volatility_pct <= 6.0,
+    }
+    score = sum(weight for name, weight in {
+        "rsi_extreme": 20,
+        "volume_surge": 15,
+        "reversal_candle": 15,
+        "trend_aligned": 20,
+        "macd_aligned": 15,
+        "regime_aligned": 10,
+        "funding_aligned": 10,
+        "volatility_usable": 5,
+    }.items() if factors[name])
+    confirmed = all(factors.values())
+    return {
+        "confirmed": confirmed,
+        "score": float(score),
+        "rsi": round(rsi, 2),
+        "ema20": round(ema20, 8),
+        "ema50": round(ema50, 8),
+        "atr": round(atr, 8),
+        "atr_pct": round(volatility_pct, 2),
+        "volume_ratio": round(volume_ratio, 2),
+        "funding_rate": round(funding_rate * 100.0, 4) if funding_rate is not None else None,
+        "macd": round(macd_now, 8),
+        "trend": "bearish" if ema20 < ema50 else "bullish",
+        "factors": factors,
+        "reason": "confirmed multi-factor setup" if confirmed else "multi-factor confirmation failed",
+    }
+
+
+def _market_regime(candles: dict[str, list[float]]) -> str | None:
+    closes = candles.get("closes", [])
+    ema20 = _ema(closes, 20)
+    ema50 = _ema(closes, 50)
+    if ema20 is None or ema50 is None:
+        return None
+    if ema20 < ema50 and closes[-1] < ema20:
+        return "short"
+    if ema20 > ema50 and closes[-1] > ema20:
+        return "long"
+    return None
+
+
 def get_futures_signals(
     strategy: str = "short",
     min_volume: float = 15_000_000.0,
@@ -527,6 +744,8 @@ def get_futures_signals(
     tickers = get_binance_futures_tickers()
     results: list[dict[str, Any]] = []
     now_ts = time.time()
+    regime = _market_regime(_get_binance_klines("BTCUSDT"))
+    funding_rates = _get_funding_rates()
 
     for t in tickers:
         price: float = t["price"]
@@ -545,31 +764,32 @@ def get_futures_signals(
         # 0 = near low, 1 = near high
 
         if strategy == "short":
-            # High-volatility short setups are still preferred, but we also allow a safer
-            # swing-short pool so the page can mix riskier entries with more patient setups.
-            if change_pct >= 8.0 and position_in_range >= 0.80:
-                direction = "short"
-                score = change_pct * position_in_range  # higher = better short candidate
-            elif change_pct >= 5.0 and position_in_range >= 0.70:
-                direction = "short"
-                score = change_pct * position_in_range * 0.85
-            else:
+            if change_pct < 8.0 or position_in_range < 0.85:
                 continue
+            direction = "short"
         elif strategy == "long":
-            # Require: dropped ≥8%, price in bottom 20% of 24h range
-            if change_pct > -8.0 or position_in_range > 0.20:
+            if change_pct > -8.0 or position_in_range > 0.15:
                 continue
             direction = "long"
-            score = abs(change_pct) * (1 - position_in_range)
         else:  # trending
             if abs(change_pct) < 5.0:
                 continue
             direction = "short" if change_pct > 0 else "long"
-            score = abs(change_pct)
 
-        setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+        funding_rate = funding_rates.get(t["symbol"])
+        analysis = _multi_factor_analysis(
+            _get_binance_klines(t["symbol"]), direction, regime, funding_rate
+        )
+        if not analysis.get("confirmed"):
+            continue
+
+        setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction, analysis.get("atr"))
         if not _entry_is_still_live(price, setup["entry"], direction):
             continue
+        if setup["rr"] < 1.2 or setup["risk_pct"] > 6.0:
+            continue
+
+        score = round(abs(change_pct) * (1.0 - abs(position_in_range - 0.5)) + analysis["score"] * 0.35, 2)
 
         volatility, volatility_pct = _volatility_status(price, high_24h, low_24h)
 
@@ -585,6 +805,17 @@ def get_futures_signals(
                 "low_24h": low_24h,
                 "position_in_range": round(position_in_range * 100, 1),
                 "score": round(score, 2),
+                "confirmation_score": analysis["score"],
+                "rsi_1h": analysis["rsi"],
+                "ema20": analysis["ema20"],
+                "ema50": analysis["ema50"],
+                "atr_pct": analysis["atr_pct"],
+                "volume_ratio": analysis["volume_ratio"],
+                "funding_rate_pct": analysis["funding_rate"],
+                "macd": analysis["macd"],
+                "trend": analysis["trend"],
+                "market_regime": regime or "neutral",
+                "analysis_factors": analysis["factors"],
                 "volatility": volatility,
                 "volatility_pct": volatility_pct,
                 "refreshed_at": now_ts,
