@@ -1,6 +1,11 @@
 import unittest
 
-from python_ai.app.crypto import _balance_signal_mix, _technical_confirmation, _volatility_status
+from python_ai.app.crypto import (
+    _balance_signal_mix,
+    _harmonized_signal,
+    _technical_confirmation,
+    _volatility_status,
+)
 
 
 class TestVolatilityStatus(unittest.TestCase):
@@ -54,6 +59,21 @@ class TestTechnicalConfirmation(unittest.TestCase):
         closes = [100.0 + index for index in range(20)]
         confirmed, _, _ = _technical_confirmation(closes, [100.0] * 5 + [120.0], "short")
         self.assertFalse(confirmed)
+
+
+class TestHarmonizedSignal(unittest.TestCase):
+    def test_unconfirmed_analysis_is_hold(self):
+        signal, color = _harmonized_signal({"confirmed": False, "score": 110}, "long")
+        self.assertEqual((signal, color), ("HOLD", "gray"))
+
+    def test_confirmed_long_and_short_use_trade_direction(self):
+        analysis = {"confirmed": True, "score": 95}
+        self.assertEqual(_harmonized_signal(analysis, "long"), ("STRONG BUY", "green"))
+        self.assertEqual(_harmonized_signal(analysis, "short"), ("STRONG SELL", "red"))
+
+    def test_medium_confirmation_uses_non_strong_label(self):
+        signal, color = _harmonized_signal({"confirmed": True, "score": 75}, "short")
+        self.assertEqual((signal, color), ("SELL", "orange"))
 
 
 if __name__ == "__main__":

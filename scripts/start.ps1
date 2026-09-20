@@ -16,18 +16,18 @@ function Stop-StalePortProcess {
     }
 
     foreach ($conn in $connections) {
-        $pid = $conn.OwningProcess
-        if (-not $pid) {
+        $ownerPid = $conn.OwningProcess
+        if (-not $ownerPid) {
             continue
         }
 
-        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $process = Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
         if (-not $process) {
             continue
         }
 
-        Write-Host "Stopping stale process $($process.ProcessName) (PID $pid) on port $Port..."
-        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+        Write-Host "Stopping stale process $($process.ProcessName) (PID $ownerPid) on port $Port..."
+        Stop-Process -Id $ownerPid -Force -ErrorAction SilentlyContinue
     }
 }
 

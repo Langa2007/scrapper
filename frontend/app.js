@@ -528,7 +528,7 @@ function getVolatilityStatus(signal) {
 
 function renderFuturesSignals(data, container) {
   if (!data || !Array.isArray(data.signals) || data.signals.length === 0) {
-    container.innerHTML = emptyState('No active futures setups found for this strategy.');
+    container.innerHTML = emptyState('No candidates found for this strategy. Try the other direction or lower the volume filter.');
     return;
   }
 
@@ -539,6 +539,8 @@ function renderFuturesSignals(data, container) {
     const rationale = signal.rationale || `${signal.symbol} is trading near the ${direction === 'SHORT' ? 'upper' : 'lower'} range and is filtering for a ${direction.toLowerCase()} setup.`;
     const volatility = getVolatilityStatus(signal);
     const dyorWarning = volatility.className === 'volatile' ? '<span class="dyor-pill">DYOR before trading</span>' : '';
+    const statusLabel = signal.signal_status === 'confirmed' ? 'Confirmed' : 'Provisional';
+    const statusClass = signal.signal_status === 'confirmed' ? 'stable' : 'moderate';
 
     return `
       <div class="futures-card">
@@ -563,12 +565,13 @@ function renderFuturesSignals(data, container) {
 
         <div class="futures-footer">
           <span class="rr-pill">${Number(signal.rr || 0).toFixed(2)} R:R</span>
+          <span class="vol-pill ${statusClass}">${statusLabel} • ${Number(signal.confidence_pct || 0).toFixed(0)}% confidence</span>
           <span class="lev-pill">${Number(signal.leverage || 0)}x Leverage</span>
           <span class="vol-pill ${volatility.className}">${volatility.label} • ${volatility.pct}%</span>
           ${dyorWarning}
         </div>
 
-        <div class="futures-rationale">${rationale}</div>
+        <div class="futures-rationale">${signal.risk_warning || rationale}</div>
       </div>
     `;
   }).join('');
@@ -647,6 +650,7 @@ function renderCoinCard(d, container) {
           <div class="crypto-name">${d.name} <span class="crypto-symbol">${d.symbol}</span></div>
           <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
             <span class="badge ${badgeClass}">${d.signal}</span>
+            ${d.signal_confidence != null ? `<span style="font-size:11px;color:var(--text-muted)">${Number(d.signal_confidence).toFixed(0)}% multi-factor confidence</span>` : ''}
             <span class="vol-pill ${volatilityClass}">${volatilityLabel} • ${volatilityPct}%</span>
             ${dyorWarning}
           </div>

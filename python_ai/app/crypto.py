@@ -1,6 +1,7 @@
 import logging
 import time
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, TypedDict, TypeVar, cast
 
 import httpx
@@ -199,6 +200,15 @@ def _format_coin(coin: JsonObject) -> dict[str, Any]:
     }
 
 
+def _harmonized_signal(analysis: dict[str, Any], direction: str) -> tuple[str, str]:
+    if not analysis.get("confirmed"):
+        return "HOLD", "gray"
+    score = float(analysis.get("score") or 0.0)
+    if direction == "short":
+        return ("STRONG SELL", "red") if score >= 90 else ("SELL", "orange")
+    return ("STRONG BUY", "green") if score >= 90 else ("BUY", "lightgreen")
+
+
 def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
     symbol = str(data.get("symbol") or "").upper()
     if not symbol:
@@ -220,7 +230,36 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
     low_24h = float(matching_ticker.get("low_24h") or 0.0)
     change_pct = float(matching_ticker.get("change_pct") or 0.0)
     direction = "short" if change_pct >= 0 else "long"
-    setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction)
+    regime, funding_rate, candles = _get_analysis_context(matching_ticker["symbol"])
+    analysis = _multi_factor_analysis(
+        candles, direction, regime, funding_rate
+    )
+    signal, color = _harmonized_signal(analysis, direction)
+    data["signal"] = signal
+    data["signal_color"] = color
+    data["momentum_score"] = analysis.get("score", 0.0)
+    data["signal_confidence"] = round(float(analysis.get("score", 0.0)) / 110.0 * 100.0, 1)
+    data["signal_source"] = "Binance multi-factor analysis"
+    data["signal_agreement"] = signal != "HOLD"
+    data["analysis"] = {
+        "rsi_1h": analysis.get("rsi"),
+        "ema20": analysis.get("ema20"),
+        "ema50": analysis.get("ema50"),
+        "atr_pct": analysis.get("atr_pct"),
+        "volume_ratio": analysis.get("volume_ratio"),
+        "funding_rate_pct": analysis.get("funding_rate"),
+        "macd": analysis.get("macd"),
+        "trend": analysis.get("trend"),
+        "market_regime": regime or "neutral",
+        "factors": analysis.get("factors", {}),
+        "reason": analysis.get("reason"),
+    }
+    if not analysis.get("confirmed"):
+        return data
+
+    setup = _calculate_futures_setup(
+        price, high_24h, low_24h, change_pct, direction, analysis.get("atr")
+    )
     volatility, volatility_pct = _volatility_status(price, high_24h, low_24h)
 
     data["futures_setup"] = {
@@ -236,10 +275,13 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
         "risk_pct": setup["risk_pct"],
         "volatility": volatility,
         "volatility_pct": volatility_pct,
+        "confirmation_score": analysis.get("score", 0.0),
+        "rsi_1h": analysis.get("rsi"),
+        "analysis_factors": analysis.get("factors", {}),
         "rationale": (
-            "Momentum is extended into resistance; wait for a small retracement before entering."
+            "Multi-factor bearish confirmation; wait for a small retracement before entering."
             if direction == "short"
-            else "Dip is showing support; wait for a bounce into the lower entry zone before entering."
+            else "Multi-factor bullish confirmation; wait for a bounce into the lower entry zone before entering."
         ),
     }
     return data
@@ -428,7 +470,7 @@ def get_binance_futures_tickers() -> list[dict[str, Any]]:
             return data
 
     try:
-        with httpx.Client(timeout=15) as client:
+        with httpx.Client(timeout=5) as client:
             resp = client.get(f"{BINANCE_FUTURES_BASE}/ticker/24hr")
             resp.raise_for_status()
             raw = resp.json()
@@ -468,7 +510,7 @@ def _get_funding_rates() -> dict[str, float]:
     if _funding_cache is not None and now - _funding_cache[1] < _FUTURES_CACHE_TTL:
         return _funding_cache[0]
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=4) as client:
             response = client.get(f"{BINANCE_FUTURES_BASE}/premiumIndex")
             response.raise_for_status()
             raw = response.json()
@@ -605,7 +647,7 @@ def _get_binance_klines(symbol: str) -> dict[str, list[float]]:
         return cached[0]
 
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=4) as client:
             response = client.get(
                 f"{BINANCE_FUTURES_BASE}/klines",
                 params={"symbol": symbol, "interval": "1h", "limit": 50},
@@ -636,6 +678,26 @@ def _get_binance_klines(symbol: str) -> dict[str, list[float]]:
                 continue
     _klines_cache[symbol] = (candles, now)
     return candles
+
+
+def _get_binance_klines_batch(symbols: list[str]) -> dict[str, dict[str, list[float]]]:
+    unique_symbols = list(dict.fromkeys(symbols))
+    if not unique_symbols:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(8, len(unique_symbols))) as executor:
+        candles = executor.map(_get_binance_klines, unique_symbols)
+    return dict(zip(unique_symbols, candles))
+
+
+def _get_analysis_context(symbol: str) -> tuple[str | None, float | None, dict[str, list[float]]]:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        btc_future = executor.submit(_get_binance_klines, "BTCUSDT")
+        funding_future = executor.submit(_get_funding_rates)
+        symbol_future = executor.submit(_get_binance_klines, symbol)
+        regime = _market_regime(btc_future.result())
+        funding_rate = funding_future.result().get(symbol)
+        candles = symbol_future.result()
+    return regime, funding_rate, candles
 
 
 def _multi_factor_analysis(
@@ -744,52 +806,69 @@ def get_futures_signals(
     tickers = get_binance_futures_tickers()
     results: list[dict[str, Any]] = []
     now_ts = time.time()
-    regime = _market_regime(_get_binance_klines("BTCUSDT"))
-    funding_rates = _get_funding_rates()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        regime_future = executor.submit(lambda: _market_regime(_get_binance_klines("BTCUSDT")))
+        funding_future = executor.submit(_get_funding_rates)
+        regime = regime_future.result()
+        funding_rates = funding_future.result()
 
-    for t in tickers:
+    eligible_tickers: list[dict[str, Any]] = []
+    for ticker in tickers:
+        price = ticker["price"]
+        high_24h = ticker["high_24h"]
+        low_24h = ticker["low_24h"]
+        change_pct = ticker["change_pct"]
+        if ticker["volume_usdt"] < min_volume or price <= 0 or high_24h <= 0 or low_24h <= 0:
+            continue
+        range_24h = high_24h - low_24h
+        position = (price - low_24h) / range_24h if range_24h > 0 else 0.5
+        if strategy == "short" and (change_pct < 5.0 or position < 0.70):
+            continue
+        if strategy == "long" and (change_pct > -5.0 or position > 0.30):
+            continue
+        if strategy == "trending" and abs(change_pct) < 5.0:
+            continue
+        ticker["_position_in_range"] = position
+        eligible_tickers.append(ticker)
+
+    eligible_tickers.sort(key=lambda item: (abs(item["change_pct"]), item["volume_usdt"]), reverse=True)
+    analysis_tickers = eligible_tickers[: min(20, max(8, limit * 3))]
+    candle_data = _get_binance_klines_batch([ticker["symbol"] for ticker in analysis_tickers])
+
+    for t in analysis_tickers:
         price: float = t["price"]
         high_24h: float = t["high_24h"]
         low_24h: float = t["low_24h"]
         change_pct: float = t["change_pct"]
         volume_usdt: float = t["volume_usdt"]
 
-        if volume_usdt < min_volume:
-            continue
-        if price <= 0 or high_24h <= 0 or low_24h <= 0:
-            continue
-
         range_24h = high_24h - low_24h
-        position_in_range = (price - low_24h) / range_24h if range_24h > 0 else 0.5
+        position_in_range = t["_position_in_range"] if range_24h > 0 else 0.5
         # 0 = near low, 1 = near high
 
         if strategy == "short":
-            if change_pct < 8.0 or position_in_range < 0.85:
-                continue
             direction = "short"
         elif strategy == "long":
-            if change_pct > -8.0 or position_in_range > 0.15:
-                continue
             direction = "long"
         else:  # trending
-            if abs(change_pct) < 5.0:
-                continue
             direction = "short" if change_pct > 0 else "long"
 
         funding_rate = funding_rates.get(t["symbol"])
         analysis = _multi_factor_analysis(
-            _get_binance_klines(t["symbol"]), direction, regime, funding_rate
+            candle_data.get(t["symbol"], {"opens": [], "highs": [], "lows": [], "closes": [], "volumes": []}),
+            direction,
+            regime,
+            funding_rate,
         )
-        if not analysis.get("confirmed"):
-            continue
 
         setup = _calculate_futures_setup(price, high_24h, low_24h, change_pct, direction, analysis.get("atr"))
-        if not _entry_is_still_live(price, setup["entry"], direction):
-            continue
-        if setup["rr"] < 1.2 or setup["risk_pct"] > 6.0:
-            continue
+        entry_live = _entry_is_still_live(price, setup["entry"], direction)
 
-        score = round(abs(change_pct) * (1.0 - abs(position_in_range - 0.5)) + analysis["score"] * 0.35, 2)
+        score = round(
+            abs(change_pct) * (1.0 - abs(position_in_range - 0.5))
+            + analysis.get("score", 0.0) * 0.35,
+            2,
+        )
 
         volatility, volatility_pct = _volatility_status(price, high_24h, low_24h)
 
@@ -805,17 +884,25 @@ def get_futures_signals(
                 "low_24h": low_24h,
                 "position_in_range": round(position_in_range * 100, 1),
                 "score": round(score, 2),
-                "confirmation_score": analysis["score"],
-                "rsi_1h": analysis["rsi"],
-                "ema20": analysis["ema20"],
-                "ema50": analysis["ema50"],
-                "atr_pct": analysis["atr_pct"],
-                "volume_ratio": analysis["volume_ratio"],
-                "funding_rate_pct": analysis["funding_rate"],
-                "macd": analysis["macd"],
-                "trend": analysis["trend"],
+                "confirmation_score": analysis.get("score", 0.0),
+                "confidence_pct": round(float(analysis.get("score", 0.0)) / 110.0 * 100.0, 1),
+                "signal_status": "confirmed" if analysis.get("confirmed") else "provisional",
+                "rsi_1h": analysis.get("rsi"),
+                "ema20": analysis.get("ema20"),
+                "ema50": analysis.get("ema50"),
+                "atr_pct": analysis.get("atr_pct"),
+                "volume_ratio": analysis.get("volume_ratio"),
+                "funding_rate_pct": analysis.get("funding_rate"),
+                "macd": analysis.get("macd"),
+                "trend": analysis.get("trend", "unknown"),
                 "market_regime": regime or "neutral",
-                "analysis_factors": analysis["factors"],
+                "analysis_factors": analysis.get("factors", {}),
+                "entry_live": entry_live,
+                "risk_warning": (
+                    "Setup is provisional; monitor before entering."
+                    if not analysis.get("confirmed")
+                    else "Confirmed multi-factor setup."
+                ),
                 "volatility": volatility,
                 "volatility_pct": volatility_pct,
                 "refreshed_at": now_ts,
