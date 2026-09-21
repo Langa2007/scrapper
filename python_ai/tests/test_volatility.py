@@ -62,18 +62,18 @@ class TestTechnicalConfirmation(unittest.TestCase):
 
 
 class TestHarmonizedSignal(unittest.TestCase):
-    def test_unconfirmed_analysis_is_hold(self):
-        signal, color = _harmonized_signal({"confirmed": False, "score": 110}, "long")
-        self.assertEqual((signal, color), ("HOLD", "gray"))
+    def test_unconfirmed_analysis_still_returns_futures_direction(self):
+        self.assertEqual(_harmonized_signal({"confirmed": False, "score": 40}, "long"), ("BUY", "lightgreen"))
+        self.assertEqual(_harmonized_signal({"confirmed": False, "score": 40}, "short"), ("SHORT", "orange"))
 
     def test_confirmed_long_and_short_use_trade_direction(self):
         analysis = {"confirmed": True, "score": 95}
         self.assertEqual(_harmonized_signal(analysis, "long"), ("STRONG BUY", "green"))
-        self.assertEqual(_harmonized_signal(analysis, "short"), ("STRONG SELL", "red"))
+        self.assertEqual(_harmonized_signal(analysis, "short"), ("STRONG SHORT", "red"))
 
     def test_medium_confirmation_uses_non_strong_label(self):
         signal, color = _harmonized_signal({"confirmed": True, "score": 75}, "short")
-        self.assertEqual((signal, color), ("SELL", "orange"))
+        self.assertEqual((signal, color), ("SHORT", "orange"))
 
 
 if __name__ == "__main__":

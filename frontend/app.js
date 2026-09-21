@@ -34,6 +34,8 @@ function signalBadgeClass(signal) {
   const s = (signal || '').toLowerCase().replace(' ', '-');
   if (s.includes('strong-buy')) return 'badge-strong-buy';
   if (s.includes('buy')) return 'badge-buy';
+  if (s.includes('strong-short')) return 'badge-strong-sell';
+  if (s === 'short') return 'badge-sell';
   if (s.includes('strong-sell')) return 'badge-strong-sell';
   if (s.includes('sell')) return 'badge-sell';
   return 'badge-hold';

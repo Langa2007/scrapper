@@ -201,11 +201,9 @@ def _format_coin(coin: JsonObject) -> dict[str, Any]:
 
 
 def _harmonized_signal(analysis: dict[str, Any], direction: str) -> tuple[str, str]:
-    if not analysis.get("confirmed"):
-        return "HOLD", "gray"
     score = float(analysis.get("score") or 0.0)
     if direction == "short":
-        return ("STRONG SELL", "red") if score >= 90 else ("SELL", "orange")
+        return ("STRONG SHORT", "red") if score >= 90 else ("SHORT", "orange")
     return ("STRONG BUY", "green") if score >= 90 else ("BUY", "lightgreen")
 
 
@@ -229,8 +227,8 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
     high_24h = float(matching_ticker.get("high_24h") or 0.0)
     low_24h = float(matching_ticker.get("low_24h") or 0.0)
     change_pct = float(matching_ticker.get("change_pct") or 0.0)
-    direction = "short" if change_pct >= 0 else "long"
     regime, funding_rate, candles = _get_analysis_context(matching_ticker["symbol"])
+    direction = regime or ("short" if change_pct >= 0 else "long")
     analysis = _multi_factor_analysis(
         candles, direction, regime, funding_rate
     )
@@ -240,7 +238,8 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
     data["momentum_score"] = analysis.get("score", 0.0)
     data["signal_confidence"] = round(float(analysis.get("score", 0.0)) / 110.0 * 100.0, 1)
     data["signal_source"] = "Binance multi-factor analysis"
-    data["signal_agreement"] = signal != "HOLD"
+    data["signal_agreement"] = True
+    data["signal_status"] = "confirmed" if analysis.get("confirmed") else "provisional"
     data["analysis"] = {
         "rsi_1h": analysis.get("rsi"),
         "ema20": analysis.get("ema20"),
@@ -254,9 +253,6 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
         "factors": analysis.get("factors", {}),
         "reason": analysis.get("reason"),
     }
-    if not analysis.get("confirmed"):
-        return data
-
     setup = _calculate_futures_setup(
         price, high_24h, low_24h, change_pct, direction, analysis.get("atr")
     )
@@ -276,6 +272,8 @@ def _attach_futures_setup(data: dict[str, Any]) -> dict[str, Any]:
         "volatility": volatility,
         "volatility_pct": volatility_pct,
         "confirmation_score": analysis.get("score", 0.0),
+        "signal_status": data["signal_status"],
+        "confidence_pct": data["signal_confidence"],
         "rsi_1h": analysis.get("rsi"),
         "analysis_factors": analysis.get("factors", {}),
         "rationale": (
